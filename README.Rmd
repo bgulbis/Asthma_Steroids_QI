@@ -32,7 +32,6 @@ To compare efficacy and safety outcomes between children receiving a two-dose re
 
 ### Exclusion Criteria:  
 
-* Greater than 18 years of age
 * Pregnant
 * Required initial management in the intensive care unit
 * Received corticosteroid therapy due to a secondary diagnosis (e.g., croup or anaphylactic shock)
