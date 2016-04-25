@@ -16,7 +16,13 @@ To compare efficacy and safety outcomes between children receiving a two-dose re
 
 ### Inclusion Criteria
 
-Pediatric patients aged 4-17 years of age who were hospitalized for an acute asthma exacerbation and received therapy with either dexamethasone or prednisone/prednisolone at Children’s Memorial Hermann Hospital from January 1, 2014 to December 31, 2015 will be reviewed for inclusion. 
+* Patients 4-17 years of age
+* Hospitalized for an acute asthma exacerbation
+    - ICD-9-CM code: 493.92
+    - ICD-10-CM code: J45.901
+* Received therapy with either dexamethasone or prednisone/prednisolone
+* Admitted to Children’s Memorial Hermann Hospital
+* Admitted between January 1, 2014 to December 31, 2015
 
 ### Exclusion Criteria:  
 
