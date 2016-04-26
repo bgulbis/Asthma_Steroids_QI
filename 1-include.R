@@ -18,14 +18,14 @@ concat_encounters(raw.patients$pie.id, 900)
 # icd9: 493.92 (may want to consider: 493.02, 493.12, 493.22)
 # icd10: J45.901 (may want to consider: J45.21, J45.31, J45.41, J45.51)
 
-# code <- "493.92"
-code <- c("493.92", "493.02", "493.12", "493.22", "493.01", "493.11", "493.21",
-          "493.91")
+code <- "493.92"
+# code <- c("493.92", "493.02", "493.12", "493.22", "493.01", "493.11", "493.21",
+#           "493.91")
 ref.icd9 <- data_frame(disease.state = "asthma", type = "ICD", code = code)
 
-# code <- "J45.901"
-code <- c("J45.901", "J45.21", "J45.31", "J45.41", "J45.51", "J45.22", "J45.32",
-          "J45.42", "J45.52", "J45.902")
+code <- "J45.901"
+# code <- c("J45.901", "J45.21", "J45.31", "J45.41", "J45.51", "J45.22", "J45.32",
+#           "J45.42", "J45.52", "J45.902")
 ref.icd10 <- data_frame(disease.state = "asthma", type = "ICD", code = code)
 
 raw.icd9 <- read_edw_data(dir.patients, "icd9")
