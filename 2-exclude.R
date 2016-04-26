@@ -4,7 +4,8 @@ source("0-library.R")
 
 tmp <- get_rds(dir.save)
 
-include <- data_frame(pie.id = patients$eligible)
+include <- data_frame(pie.id = eligible)
+patients <- list(eligible = eligible)
 
 # get list of unique person id's to use for identifying re-encounters
 raw.persons <- read_edw_data(dir.patients, "demographics") %>%

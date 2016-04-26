@@ -34,10 +34,8 @@ raw.icd10 <- read_edw_data(dir.patients, "icd10")
 tidy.icd9 <- tidy_data(raw.icd9, "icd9", ref.data = ref.icd9)
 tidy.icd10 <- tidy_data(raw.icd10, "icd10", ref.data = ref.icd10)
 
-pts.eligible <- bind_rows(tidy.icd9, tidy.icd10)$pie.id
+eligible <- bind_rows(tidy.icd9, tidy.icd10)$pie.id
 
-patients <- list(eligible = pts.eligible)
+save_rds(dir.save, "^eligible")
 
-save_rds(dir.save, "^patients")
-
-concat_encounters(patients$eligible, 900)
+concat_encounters(eligible, 900)
