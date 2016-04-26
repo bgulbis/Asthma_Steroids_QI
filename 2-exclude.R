@@ -47,6 +47,36 @@ patients$exclude_icu = excl.location$pie.id
 
 include <- anti_join(include, excl.location, by = "pie.id")
 
+# other indications ----
+# exclude if croup or anaphylactic shock
+
+ref.icd9 <- find_icd_codes("(anaphyl|croup)") %>%
+    filter(icd.code != "V13.81") %>%
+    transmute(disease.state = ifelse(icd.code == "464.4", "croup", "anaphylaxis"),
+              type = "ICD",
+              code = icd.code)
+
+excl.icd9 <- read_edw_data(dir.patients, "icd9") %>%
+    semi_join(include, by = "pie.id") %>%
+    tidy_data("icd9", ref.data = ref.icd9)
+
+ref.icd10 <- find_icd_codes("(anaphyl|croup)", TRUE) %>%
+    filter(icd.code != "Z87.892") %>%
+    transmute(disease.state = ifelse(icd.code == "J05.0", "croup", "anaphylaxis"),
+              type = "ICD",
+              code = icd.code)
+
+excl.icd10 <- read_edw_data(dir.patients, "icd10") %>%
+    semi_join(include, by = "pie.id") %>%
+    tidy_data("icd10", ref.data = ref.icd10)
+
+excl.indication <- bind_rows(excl.icd9, excl.icd10)
+rm(excl.icd9, excl.icd10)
+
+patients$exclude_alternate_indication = excl.indication$pie.id
+
+include <- anti_join(include, excl.indication, by = "pie.id")
+
 # both steroids ----
 # exclude patients who received both dexamethasone and prednisone/prednisolone
 
