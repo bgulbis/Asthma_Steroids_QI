@@ -93,6 +93,7 @@ include <- anti_join(include, excl.steroids, by = "pie.id")
 
 excl.racepi <- read_edw_data(dir.patients, "meds_sched") %>%
     semi_join(include, by = "pie.id") %>%
+    filter(med == "racepinephrine") %>%
     distinct(pie.id)
 
 patients$exclude_racemic_epi = excl.racepi$pie.id
