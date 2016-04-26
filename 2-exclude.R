@@ -7,13 +7,6 @@ tmp <- get_rds(dir.save)
 include <- data_frame(pie.id = eligible)
 patients <- list(eligible = eligible)
 
-# get list of unique person id's to use for identifying re-encounters
-raw.persons <- read_edw_data(dir.patients, "demographics") %>%
-    select(person.id) %>%
-    distinct
-
-concat_encounters(raw.persons$person.id)
-
 # pregnant ----
 # exclude any pregnant patients
 
@@ -105,6 +98,33 @@ excl.racepi <- read_edw_data(dir.patients, "meds_sched") %>%
 patients$exclude_racemic_epi = excl.racepi$pie.id
 
 include <- anti_join(include, excl.racepi, by = "pie.id")
+
+# readmissions ----
+# remove any subsequent encounters
+
+# get list of unique person id's to use for identifying re-encounters
+raw.demographics <- read_edw_data(dir.patients, "demographics") %>%
+    semi_join(include, by = "pie.id")
+
+tmp <- distinct(raw.demographics, person.id)
+
+# use for EDW query "Encounters - by Person ID"
+concat_encounters(tmp$person.id)
+
+raw.encounters <- read_edw_data(dir.patients, "encounters")
+
+tmp.visits <- inner_join(raw.demographics,
+                         raw.encounters[c("pie.id", "admit.datetime")],
+                         by = "pie.id") %>%
+    group_by(person.id) %>%
+    arrange(admit.datetime) %>%
+    summarize(pie.id = first(pie.id))
+
+excl.readmit <- anti_join(include, tmp.visits, by = "pie.id")
+
+patients$exclude_readmission = excl.readmit$pie.id
+
+include <- semi_join(include, tmp.visits, by = "pie.id")
 
 # included patients ----
 
