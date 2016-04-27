@@ -85,6 +85,7 @@ data.steroids <- tmp.steroids %>%
               first.freq = first(freq),
               total.dose = sum(med.dose),
               first.datetime = first(med.datetime),
+              last.datetime = last(med.datetime),
               duration = difftime(last(med.datetime), first(med.datetime),
                                   units = "hours"))
 
@@ -142,12 +143,10 @@ data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
 
 # icu admission ----
 
-picu <- "Hermann 9 Pediatric Intensive Care Unit"
-
 tmp.locations <- read_edw_data(dir.patients, "locations") %>%
     semi_join(include, by = "pie.id") %>%
     tidy_data("locations") %>%
-    filter(location == picu) %>%
+    filter(location == "Hermann 9 Pediatric Intensive Care Unit") %>%
     distinct(pie.id)
 
 data.picu <- left_join(data.demographics["pie.id"],
@@ -155,6 +154,26 @@ data.picu <- left_join(data.demographics["pie.id"],
                        by = "pie.id") %>%
     mutate(picu.admit = ifelse(!is.na(location), TRUE, FALSE)) %>%
     select(-location)
+
+# vomiting ----
+
+tmp.emesis <- read_edw_data(dir.patients, "vomit", "events") %>%
+    semi_join(include, by = "pie.id") %>%
+    inner_join(data.steroids[c("pie.id", "first.datetime", "last.datetime")],
+               by = "pie.id") %>%
+    mutate(event.result = as.numeric(event.result)) %>%
+    filter(event.result > 0,
+           event.datetime > first.datetime,
+           event.datetime < last.datetime + hours(24)) %>%
+    distinct(pie.id)
+
+data.emesis <- left_join(data.demographics["pie.id"],
+                         tmp.emesis[c("pie.id", "event.result")],
+                         by = "pie.id") %>%
+    mutate(emesis = ifelse(!is.na(event.result), TRUE, FALSE)) %>%
+    select(-event.result)
+
+# save data files
 
 save_rds(dir.save, "^data")
 
