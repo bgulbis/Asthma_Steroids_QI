@@ -84,7 +84,36 @@ data.steroids <- tmp.steroids %>%
               first.dose = first(med.dose),
               first.freq = first(freq),
               total.dose = sum(med.dose),
-              duration = difftime(last(med.datetime), first(med.datetime), units = "hours"))
+              first.datetime = first(med.datetime),
+              duration = difftime(last(med.datetime), first(med.datetime),
+                                  units = "hours"))
+
+# adjunct medications ----
+
+tmp.first.steroid <- data.steroids %>%
+    group_by(pie.id) %>%
+    summarize(first.datetime = first(first.datetime))
+
+tmp.meds <- read_edw_data(dir.patients, "meds_sched") %>%
+    semi_join(include, by = "pie.id") %>%
+    filter(med %in% c("albuterol", "ipratropium", "albuterol-ipratropium",
+                      "ipratropium nasal", "magnesium sulfate",
+                      "magnesium oxide", "terbutaline")) %>%
+    inner_join(tmp.first.steroid, by = "pie.id") %>%
+    group_by(pie.id, med) %>%
+    arrange(med.datetime)
+
+tmp.meds.adjunct <- tmp.meds %>%
+    filter(med.datetime > first.datetime) %>%
+    group_by(pie.id, med, med.dose.units) %>%
+    summarize(total.dose.after = sum(med.dose))
+
+data.meds.adjunct <- tmp.meds %>%
+    group_by(pie.id, med, med.dose.units) %>%
+    summarize(total.dose = sum(med.dose)) %>%
+    full_join(tmp.meds.adjunct, by = c("pie.id", "med", "med.dose.units"))
+
+
 
 save_rds(dir.save, "^data")
 
