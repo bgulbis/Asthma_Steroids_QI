@@ -11,6 +11,16 @@ include <- data_frame(pie.id = patients$include)
 data.demographics <- read_edw_data(dir.patients, "demographics") %>%
     semi_join(include, by = "pie.id")
 
+# groups ----
+
+tmp.steroids <- read_edw_data(dir.patients, "meds_freq", "meds_sched_freq") %>%
+    semi_join(include, by = "pie.id")
+
+data.groups <- tmp.steroids %>%
+    mutate(dex = ifelse(med == "dexamethasone", TRUE, FALSE)) %>%
+    group_by(pie.id) %>%
+    summarize(group = ifelse(sum(dex) >= 1, "dexamethasone", "prednisone"))
+
 # primary diagnosis ----
 
 tmp.icd9 <- read_edw_data(dir.patients, "icd9") %>%
@@ -64,3 +74,10 @@ data.asthma <- read_edw_data(dir.patients, "scores", "events") %>%
     summarize(event.result = first(event.result)) %>%
     group_by(pie.id, event.datetime, post) %>%
     spread(event, event.result)
+
+# steroids ----
+
+
+
+save_rds(dir.save, "^data")
+
