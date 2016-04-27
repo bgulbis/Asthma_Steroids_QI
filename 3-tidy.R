@@ -113,6 +113,32 @@ data.meds.adjunct <- tmp.meds %>%
     summarize(total.dose = sum(med.dose)) %>%
     full_join(tmp.meds.adjunct, by = c("pie.id", "med", "med.dose.units"))
 
+# readmissions ----
+
+tmp.encounters <- read_edw_data(dir.patients, "encounters")
+
+tmp.index <- tmp.encounters%>%
+    group_by(person.id) %>%
+    arrange(admit.datetime) %>%
+    left_join(data.demographics[c("pie.id", "age")], by = "pie.id") %>%
+    filter(!is.na(age)) %>%
+    select(person.id, index.datetime = admit.datetime)
+
+tmp.readmit <- inner_join(tmp.encounters, tmp.index, by = "person.id") %>%
+    filter(admit.datetime > index.datetime,
+           visit.type %in% c("Inpatient", "OBS Observation Patient")) %>%
+    group_by(person.id) %>%
+    mutate(readmit.days = difftime(admit.datetime, index.datetime,
+                                   units = "days")) %>%
+    summarize(readmit.days = min(readmit.days))
+
+data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
+                          tmp.readmit[c("person.id", "readmit.days")],
+                          by = "person.id") %>%
+    mutate(readmit.30days = ifelse(readmit.days <= 30, TRUE, FALSE),
+           readmit.7days = ifelse(readmit.days <= 7, TRUE, FALSE)) %>%
+    select(-readmit.days, -person.id) %>%
+    mutate_each(funs(ifelse(is.na(.), FALSE, .)), contains("readmit"))
 
 
 save_rds(dir.save, "^data")
