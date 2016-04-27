@@ -140,6 +140,21 @@ data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
     select(-readmit.days, -person.id) %>%
     mutate_each(funs(ifelse(is.na(.), FALSE, .)), contains("readmit"))
 
+# icu admission ----
+
+picu <- "Hermann 9 Pediatric Intensive Care Unit"
+
+tmp.locations <- read_edw_data(dir.patients, "locations") %>%
+    semi_join(include, by = "pie.id") %>%
+    tidy_data("locations") %>%
+    filter(location == picu) %>%
+    distinct(pie.id)
+
+data.picu <- left_join(data.demographics["pie.id"],
+                       tmp.locations[c("pie.id", "location")],
+                       by = "pie.id") %>%
+    mutate(picu.admit = ifelse(!is.na(location), TRUE, FALSE)) %>%
+    select(-location)
 
 save_rds(dir.save, "^data")
 
