@@ -77,7 +77,14 @@ data.asthma <- read_edw_data(dir.patients, "scores", "events") %>%
 
 # steroids ----
 
-
+data.steroids <- tmp.steroids %>%
+    group_by(pie.id, med) %>%
+    arrange(med.datetime) %>%
+    summarize(num.doses = n(),
+              first.dose = first(med.dose),
+              first.freq = first(freq),
+              total.dose = sum(med.dose),
+              duration = difftime(last(med.datetime), first(med.datetime), units = "hours"))
 
 save_rds(dir.save, "^data")
 
