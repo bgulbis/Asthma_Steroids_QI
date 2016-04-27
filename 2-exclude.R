@@ -107,7 +107,14 @@ include <- anti_join(include, excl.racepi, by = "pie.id")
 raw.demographics <- read_edw_data(dir.patients, "demographics") %>%
     semi_join(include, by = "pie.id")
 
-tmp <- distinct(raw.demographics, person.id)
+excl.er <- filter(raw.demographics, visit.type == "EC Emergency Center")
+
+patients$exclude_er_visit = excl.er$pie.id
+
+include <- anti_join(include, excl.er, by = "pie.id")
+
+tmp <- semi_join(raw.demographics, include, by = "pie.id") %>%
+    distinct(person.id)
 
 # use for EDW query "Encounters - by Person ID"
 concat_encounters(tmp$person.id)
