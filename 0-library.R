@@ -6,6 +6,8 @@ library(tibble)
 library(stringr)
 library(tidyr)
 library(lubridate)
+library(readr)
+library(purrr)
 
 source("0-dirs.R")
 
