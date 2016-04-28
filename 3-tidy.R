@@ -64,6 +64,7 @@ data.measures <- filter(tmp.measures, measure == "Weight",
 # asthma assessment ----
 
 data.asthma <- read_edw_data(dir.patients, "scores", "events") %>%
+    semi_join(include, by = "pie.id") %>%
     mutate(post = ifelse(str_detect(event, "post"), TRUE, FALSE),
            event = str_replace_all(event, "  ", " "),
            event = str_replace_all(event, "(rc|pre|post| asthma assess|asthma treatment )", ""),
