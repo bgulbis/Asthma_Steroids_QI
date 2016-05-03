@@ -20,6 +20,8 @@ analyze.steroids <- select(data.steroids, -first.datetime, -last.datetime) %>%
 
 analyze.meds.adjunct <- inner_join(data.groups, data.meds.adjunct, by = "pie.id")
 
+analyze.identifiers <- select(data.identifiers, -person.id)
+
 to.save <- ls(pattern = "^analyze")
 walk(to.save, ~ write_csv(get(.x), paste0(dir.save, "/", .x, ".csv")))
 

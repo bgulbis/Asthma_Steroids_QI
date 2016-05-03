@@ -174,6 +174,11 @@ data.emesis <- left_join(data.demographics["pie.id"],
     mutate(emesis = ifelse(!is.na(event.result), TRUE, FALSE)) %>%
     select(-event.result)
 
+# identifiers ----
+
+data.identifiers <- read_edw_data(dir.patients, "identifiers", "id") %>%
+    semi_join(include, by = "pie.id")
+
 # save data files
 
 save_rds(dir.save, "^data")
