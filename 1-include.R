@@ -38,4 +38,4 @@ eligible <- bind_rows(tidy.icd9, tidy.icd10)$pie.id
 
 save_rds(dir.save, "^eligible")
 
-concat_encounters(eligible, 900)
+print(concat_encounters(eligible, 900))

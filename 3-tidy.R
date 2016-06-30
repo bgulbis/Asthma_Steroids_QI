@@ -96,8 +96,10 @@ tmp.first.steroid <- data.steroids %>%
     group_by(pie.id) %>%
     summarize(first.datetime = first(first.datetime))
 
-tmp.meds <- read_edw_data(dir.patients, "meds_sched") %>%
-    semi_join(include, by = "pie.id") %>%
+tmp.meds.sched <- read_edw_data(dir.patients, "meds_sched") %>%
+    semi_join(include, by = "pie.id")
+
+tmp.meds <- tmp.meds.sched %>%
     filter(med %in% c("albuterol", "ipratropium", "albuterol-ipratropium",
                       "ipratropium nasal", "magnesium sulfate",
                       "magnesium oxide", "terbutaline")) %>%
@@ -114,6 +116,68 @@ data.meds.adjunct <- tmp.meds %>%
     group_by(pie.id, med, med.dose.units) %>%
     summarize(total.dose = sum(med.dose)) %>%
     full_join(tmp.meds.adjunct, by = c("pie.id", "med", "med.dose.units"))
+
+ref.cont.meds <- data_frame(name = "albuterol", type = "med", group = "cont")
+
+tmp.meds.cont <- edwr::read_edw_data(dir.patients, "meds_cont_detail") %>%
+    semi_join(include, by = "pie.id") %>%
+    tidy_data("meds_cont", ref.data = ref.cont.meds, sched.data = tmp.meds.sched)
+
+concat_encounters(tmp.meds.cont$order.id, 900)
+
+tmp.meds.cont.dc <- edwr::read_edw_data(dir.patients, "order_detail") %>%
+    filter(action.type == "Discontinue",
+           ingredient == "albuterol") %>%
+    distinct(pie.id, order.id, action.datetime) %>%
+    rename(dc.datetime = action.datetime)
+
+tmp.meds.cont.order <- edwr::read_edw_data(dir.patients, "order_detail") %>%
+    filter(action.type == "Order",
+           ingredient == "albuterol")
+
+tmp.meds.cont.alb <- tmp.meds.cont %>%
+    filter(str_detect(event.tag, "Begin Bag")) %>%
+    full_join(tmp.meds.cont.order, by = c("pie.id", "order.id")) %>%
+    full_join(tmp.meds.cont.dc, by = c("pie.id", "order.id")) %>%
+    select(pie.id:med, route, event.tag, ingredient.dose, ingredient.unit,
+           dc.datetime) %>%
+    inner_join(tmp.first.steroid, by = "pie.id") %>%
+    distinct(pie.id, order.id, .keep_all = TRUE) %>%
+    group_by(pie.id) %>%
+    mutate(dc.datetime = coalesce(dc.datetime, lead(med.datetime)),
+           after.steroid = dc.datetime > first.datetime,
+           overlap = first.datetime %within% interval(med.datetime, dc.datetime),
+           rate = ingredient.dose / 250 * 30,
+           duration.before = if_else(
+               after.steroid == TRUE & overlap == TRUE,
+               as.numeric(difftime(first.datetime, med.datetime, units = "hours")),
+               if_else(after.steroid == TRUE,
+                       0,
+                       as.numeric(difftime(dc.datetime, med.datetime, units = "hours"))
+               )
+           ),
+           duration.after = if_else(
+               after.steroid == TRUE & overlap == TRUE,
+               as.numeric(difftime(dc.datetime, first.datetime, units = "hours")),
+               if_else(after.steroid == TRUE,
+                       as.numeric(difftime(dc.datetime, med.datetime, units = "hours")),
+                       0
+               )
+           ),
+           duration.before = if_else(duration.before < 0, 0, duration.before),
+           duration.after = if_else(duration.after < 0, 0, duration.after),
+           dose.before = rate * duration.before,
+           dose.after = rate * duration.after) %>%
+    group_by(pie.id, med, ingredient.unit) %>%
+    summarize(total.dose = sum(dose.before) + sum(dose.after),
+              total.dose.after = sum(dose.after)) %>%
+    mutate(total.dose = coalesce(total.dose, 0),
+           total.dose.after = coalesce(total.dose.after, 0)) %>%
+    select(pie.id, med, med.dose.units = ingredient.unit, total.dose, total.dose.after) %>%
+    filter(total.dose > 0)
+
+data.meds.adjunct <- bind_rows(data.meds.adjunct, tmp.meds.cont.alb) %>%
+    mutate(total.dose.after = coalesce(total.dose.after, 0))
 
 # readmissions ----
 
@@ -137,10 +201,9 @@ tmp.readmit <- inner_join(tmp.encounters, tmp.index, by = "person.id") %>%
 data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
                           tmp.readmit[c("person.id", "readmit.days")],
                           by = "person.id") %>%
-    mutate(readmit.30days = ifelse(readmit.days <= 30, TRUE, FALSE),
-           readmit.7days = ifelse(readmit.days <= 7, TRUE, FALSE)) %>%
-    select(-readmit.days, -person.id) %>%
-    mutate_each(funs(ifelse(is.na(.), FALSE, .)), contains("readmit"))
+    mutate(readmit.30days = if_else(readmit.days <= 30, TRUE, FALSE, FALSE),
+           readmit.7days = if_else(readmit.days <= 7, TRUE, FALSE, FALSE)) %>%
+    select(-readmit.days, -person.id)
 
 # icu admission ----
 
@@ -148,7 +211,7 @@ tmp.locations <- read_edw_data(dir.patients, "locations") %>%
     semi_join(include, by = "pie.id") %>%
     tidy_data("locations") %>%
     filter(location == "Hermann 9 Pediatric Intensive Care Unit") %>%
-    distinct(pie.id)
+    distinct(pie.id, .keep_all = TRUE)
 
 data.picu <- left_join(data.demographics["pie.id"],
                        tmp.locations[c("pie.id", "location")],
@@ -166,7 +229,7 @@ tmp.emesis <- read_edw_data(dir.patients, "vomit", "events") %>%
     filter(event.result > 0,
            event.datetime > first.datetime,
            event.datetime < last.datetime + hours(24)) %>%
-    distinct(pie.id)
+    distinct(pie.id, .keep_all = TRUE)
 
 data.emesis <- left_join(data.demographics["pie.id"],
                          tmp.emesis[c("pie.id", "event.result")],
