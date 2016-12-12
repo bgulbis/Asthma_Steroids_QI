@@ -1,19 +1,37 @@
 # include
 
-source("0-library.R")
+# source("0-library.R")
+
+# run query:
+#   * Patients - By Medication
+#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
+#       - Person Location- Facility (Curr): Memorial Hermann Children's Hospital
+#       - Admit date: User-Defined
+
+library(tidyverse)
+library(lubridate)
+library(edwr)
+
+dir_raw <- "data/raw"
+dir.save <- "data_save"
 
 # take data from edw query for patients receiving either dexamethasone or
 # prednisone/prednisolone at CMHH and filter to desired age range and admission
 # time-frame
-raw.patients <- read_edw_data(dir.patients, "patients") %>%
+raw.patients <- read_data(dir_raw, "patients") %>%
+    as.patients() %>%
     filter(age >= 4,
            age <= 17,
-           discharge.datetime <= mdy_hms("12/31/2015 23:59:59"))
+           discharge.datetime <= mdy_hms("09/30/2016 23:59:59"))
 
-concat_encounters(raw.patients$pie.id, 900)
+edw_pie <- concat_encounters(raw.patients$pie.id, 900)
 
 # take the list of eligible patients and screen for diagnosis codes of acute
 # asthma exacerbation
+
+# run the following queries:
+#   * Diagnosis Codes (ICD-9/10-CM) - All
+
 
 # icd9: 493.92 (may want to consider: 493.02, 493.12, 493.22)
 # icd10: J45.901 (may want to consider: J45.21, J45.31, J45.41, J45.51)
