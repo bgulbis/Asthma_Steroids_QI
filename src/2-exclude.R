@@ -1,29 +1,34 @@
 # exclude
 
-source("0-library.R")
+library(tidyverse)
+library(edwr)
 
-tmp <- get_rds(dir.save)
+dir_raw <- "data/raw"
 
-include <- data_frame(pie.id = eligible)
-patients <- list(eligible = eligible)
+eligible_pie <- read_rds("data/final/eligible.Rds")
 
-# pregnant ----
+patients <- list(eligible = eligible_pie$pie.id)
+
+# pregnant ---------------------------------------------
 # exclude any pregnant patients
 
-preg.icd9 <- read_edw_data(dir.patients, "icd9") %>%
-    semi_join(include, by = "pie.id")
-preg.icd10 <- read_edw_data(dir.patients, "icd10") %>%
-    semi_join(include, by = "pie.id")
-preg.labs <- read_edw_data(dir.patients, "labs_preg", "labs") %>%
-    semi_join(include, by = "pie.id")
+excl_preg_diagnosis <- read_data(dir_raw, "diagnosis") %>%
+    as.diagnosis() %>%
+    tidy_data() %>%
+    check_pregnant()
 
-excl.preg <- check_pregnant(preg.labs, preg.icd9, preg.icd10)
+excl_preg_labs <- read_data(dir_raw, "labs_preg") %>%
+    as.labs() %>%
+    tidy_data() %>%
+    check_pregnant()
 
-patients$exclude_pregnant = excl.preg$pie.id
+excl_preg <- bind_rows(excl_preg_diagnosis, excl_preg_labs)
 
-include <- anti_join(include, excl.preg, by = "pie.id")
+patients$exclude_pregnant = excl_preg$pie.id
 
-# icu admission ----
+include <- anti_join(eligible_pie, excl_preg, by = "pie.id")
+
+# icu admission ----------------------------------------
 # exclude patients who were first admitted to the PICU
 
 picu <- "Hermann 9 Pediatric Intensive Care Unit"
