@@ -22,7 +22,8 @@ excl_preg_labs <- read_data(dir_raw, "labs_preg") %>%
     tidy_data() %>%
     check_pregnant()
 
-excl_preg <- bind_rows(excl_preg_diagnosis, excl_preg_labs)
+excl_preg <- bind_rows(excl_preg_diagnosis, excl_preg_labs) %>%
+    distinct(pie.id)
 
 patients$exclude_pregnant = excl_preg$pie.id
 
@@ -34,19 +35,18 @@ include <- anti_join(eligible_pie, excl_preg, by = "pie.id")
 picu <- "Hermann 9 Pediatric Intensive Care Unit"
 ed <- "HC Virtual Pedi Emergency Dept"
 
-locations <- read_edw_data(dir.patients, "locations") %>%
-    tidy_data("locations")
-
-excl.location <- locations %>%
+excl_locations <- read_data(dir_raw, "locations") %>%
+    as.locations() %>%
+    tidy_data() %>%
     filter((unit.count == 1 & location == picu) |
                (unit.count == 2 & location == picu & lag(location) == ed)) %>%
     distinct(pie.id)
 
-patients$exclude_icu = excl.location$pie.id
+patients$exclude_icu = excl_locations$pie.id
 
-include <- anti_join(include, excl.location, by = "pie.id")
+include <- anti_join(include, excl_locations, by = "pie.id")
 
-# other indications ----
+# other indications ------------------------------------
 # exclude if croup or anaphylactic shock
 
 ref.icd9 <- find_icd_codes("(anaphyl|croup)") %>%
