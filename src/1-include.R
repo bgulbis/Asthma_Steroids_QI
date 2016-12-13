@@ -13,7 +13,6 @@ library(lubridate)
 library(edwr)
 
 dir_raw <- "data/raw"
-dir.save <- "data_save"
 
 # take data from edw query for patients receiving either dexamethasone or
 # prednisone/prednisolone at CMHH and filter to desired age range and admission
@@ -46,7 +45,7 @@ eligible_pie <- read_data(dir_raw, "diagnosis") %>%
 
 edw_eligible <- concat_encounters(eligible_pie$pie.id)
 
-write_rds(eligible_pie, "data/final/eligible.Rds")
+write_rds(eligible_pie, "data/final/eligible.Rds", compress = "gz")
 
 # run the following queries:
 #   * Demographics
