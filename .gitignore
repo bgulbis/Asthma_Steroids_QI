@@ -8,3 +8,4 @@ data_shannan
 .Rprofile
 *.csv
 *.csv.gz
+*.Rds

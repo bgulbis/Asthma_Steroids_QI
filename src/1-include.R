@@ -46,6 +46,8 @@ eligible_pie <- read_data(dir_raw, "diagnosis") %>%
 
 edw_eligible <- concat_encounters(eligible_pie$pie.id)
 
+write_rds(eligible_pie, "data/final/eligible.Rds")
+
 # run the following queries:
 #   * Demographics
 #   * Labs - Pregnancy
