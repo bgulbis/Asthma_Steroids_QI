@@ -2,6 +2,7 @@
 
 library(tidyverse)
 library(edwr)
+library(icd)
 
 dir_raw <- "data/raw"
 
@@ -9,12 +10,14 @@ eligible_pie <- read_rds("data/final/eligible.Rds")
 
 patients <- list(eligible = eligible_pie$pie.id)
 
+raw_diagnosis <- read_data(dir_raw, "diagnosis") %>%
+    as.diagnosis() %>%
+    tidy_data()
+
 # pregnant ---------------------------------------------
 # exclude any pregnant patients
 
-excl_preg_diagnosis <- read_data(dir_raw, "diagnosis") %>%
-    as.diagnosis() %>%
-    tidy_data() %>%
+excl_preg_diagnosis <- raw_diagnosis %>%
     check_pregnant()
 
 excl_preg_labs <- read_data(dir_raw, "labs_preg") %>%
@@ -49,32 +52,28 @@ include <- anti_join(include, excl_locations, by = "pie.id")
 # other indications ------------------------------------
 # exclude if croup or anaphylactic shock
 
-ref.icd9 <- find_icd_codes("(anaphyl|croup)") %>%
-    filter(icd.code != "V13.81") %>%
-    transmute(disease.state = ifelse(icd.code == "464.4", "croup", "anaphylaxis"),
-              type = "ICD",
-              code = icd.code)
+alt_diag9 <- list(croup = icd_children("464.4"),
+                  anaphylaxis = icd_children(c("995", "999.4")))
 
-excl.icd9 <- read_edw_data(dir.patients, "icd9") %>%
+alt_diag10 <- list(croup = icd_children("J05.0"),
+                   anaphylaxis = icd_children(c("T78.0", "T78.2", "T80.5", "T88.6")))
+
+excl_diag9 <- raw_diagnosis %>%
     semi_join(include, by = "pie.id") %>%
-    tidy_data("icd9", ref.data = ref.icd9)
+    icd_comorbid(alt_diag9, "pie.id", "diag.code", FALSE, return_df = TRUE) %>%
+    filter(croup == TRUE | anaphylaxis == TRUE)
 
-ref.icd10 <- find_icd_codes("(anaphyl|croup)", TRUE) %>%
-    filter(icd.code != "Z87.892") %>%
-    transmute(disease.state = ifelse(icd.code == "J05.0", "croup", "anaphylaxis"),
-              type = "ICD",
-              code = icd.code)
-
-excl.icd10 <- read_edw_data(dir.patients, "icd10") %>%
+excl_diag10 <- raw_diagnosis %>%
     semi_join(include, by = "pie.id") %>%
-    tidy_data("icd10", ref.data = ref.icd10)
+    icd_comorbid(alt_diag10, "pie.id", "diag.code", FALSE, return_df = TRUE) %>%
+    filter(croup == TRUE | anaphylaxis == TRUE)
 
-excl.indication <- bind_rows(excl.icd9, excl.icd10)
-rm(excl.icd9, excl.icd10)
+excl_diag <- bind_rows(excl_diag9, excl_diag10) %>%
+    distinct(pie.id)
 
-patients$exclude_alternate_indication = excl.indication$pie.id
+patients$exclude_alternate_indication = excl_diag$pie.id
 
-include <- anti_join(include, excl.indication, by = "pie.id")
+include <- anti_join(include, excl_diag, by = "pie.id")
 
 # both steroids ----
 # exclude patients who received both dexamethasone and prednisone/prednisolone
