@@ -75,10 +75,11 @@ patients$exclude_alternate_indication = excl_diag$pie.id
 
 include <- anti_join(include, excl_diag, by = "pie.id")
 
-# both steroids ----
+# both steroids ----------------------------------------
 # exclude patients who received both dexamethasone and prednisone/prednisolone
 
-excl.steroids <- read_edw_data(dir.patients, "meds_freq", "meds_sched_freq") %>%
+excl_steroids <- read_data(dir_raw, "meds_freq") %>%
+    as.meds_freq() %>%
     semi_join(include, by = "pie.id") %>%
     distinct(pie.id, med) %>%
     mutate(med = factor(med),
@@ -89,9 +90,9 @@ excl.steroids <- read_edw_data(dir.patients, "meds_freq", "meds_sched_freq") %>%
     filter(dexamethasone == TRUE,
            (prednisone == TRUE | prednisolone == TRUE))
 
-patients$exclude_multiple_steroids = excl.steroids$pie.id
+patients$exclude_multiple_steroids = excl_steroids$pie.id
 
-include <- anti_join(include, excl.steroids, by = "pie.id")
+include <- anti_join(include, excl_steroids, by = "pie.id")
 
 # racemic epi ----
 
