@@ -47,11 +47,18 @@ eligible_pie <- read_data(dir_raw, "diagnosis") %>%
 edw_eligible <- concat_encounters(eligible_pie$pie.id)
 
 # run the following queries:
+#   * Demographics
 #   * Labs - Pregnancy
 #   * Location History
-#   * Medications - Inpatient Intermittent with Frequency - Prompt
-#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
 #   * Medications - Inpatient Intermittent - Prompt
 #       - Clinical Event: racepinephrine
-#   * Demographics
+#   * Medications - Inpatient Intermittent with Frequency - Prompt
+#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
+
+raw_demographics <- read_data(dir_raw, "demographics") %>%
+    as.demographics()
+
+edw_person <- concat_encounters(raw_demographics$person.id)
+
+# run the following queries:
 #   * Encounters - by Person ID
