@@ -1,6 +1,20 @@
 # include
 
-source("0-library.R")
+# library
+
+library(BGTools)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(tidyr)
+library(lubridate)
+library(readr)
+library(purrr)
+
+dir.patients <- "data_patients"
+dir.save <- "data_save"
+
+gzip_files(dir.patients)
 
 # data for Shannan's QI project
 # codes included: "493.92", "493.02", "493.12", "493.22", "493.01", "493.11", "493.21", "493.91"
