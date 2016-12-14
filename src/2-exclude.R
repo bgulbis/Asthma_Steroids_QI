@@ -94,53 +94,52 @@ patients$exclude_multiple_steroids = excl_steroids$pie.id
 
 include <- anti_join(include, excl_steroids, by = "pie.id")
 
-# racemic epi ----
+# racemic epi ------------------------------------------
 
-excl.racepi <- read_edw_data(dir.patients, "meds_sched") %>%
-    semi_join(include, by = "pie.id") %>%
+excl_racepi <- read_data(dir_raw, "meds_sched") %>%
+    as.meds_sched() %>%
     filter(med == "racepinephrine") %>%
     distinct(pie.id)
 
-patients$exclude_racemic_epi = excl.racepi$pie.id
+patients$exclude_racemic_epi = excl_racepi$pie.id
 
-include <- anti_join(include, excl.racepi, by = "pie.id")
+include <- anti_join(include, excl_racepi, by = "pie.id")
 
-# readmissions ----
+# er visits -----------------------------------------
+# remove any ER encounters
+
+raw_demographics <- read_data(dir_raw, "demographics") %>%
+    as.demographics()
+
+excl_er <- raw_demographics %>%
+    semi_join(include, by = "pie.id") %>%
+    filter(visit.type == "Emergency") %>%
+    distinct(pie.id)
+
+patients$exclude_er_visit = excl_er$pie.id
+
+include <- anti_join(include, excl_er, by = "pie.id")
+
+# readmissions -----------------------------------------
 # remove any subsequent encounters
 
-# get list of unique person id's to use for identifying re-encounters
-raw.demographics <- read_edw_data(dir.patients, "demographics") %>%
+raw_encounters <- read_data(dir_raw, "encounters") %>%
+    as.encounters() %>%
     semi_join(include, by = "pie.id")
 
-excl.er <- filter(raw.demographics, visit.type == "EC Emergency Center")
-
-patients$exclude_er_visit = excl.er$pie.id
-
-include <- anti_join(include, excl.er, by = "pie.id")
-
-tmp <- semi_join(raw.demographics, include, by = "pie.id") %>%
-    distinct(person.id)
-
-# use for EDW query "Encounters - by Person ID"
-concat_encounters(tmp$person.id)
-
-raw.encounters <- read_edw_data(dir.patients, "encounters")
-
-tmp.visits <- inner_join(raw.demographics,
-                         raw.encounters[c("pie.id", "admit.datetime")],
-                         by = "pie.id") %>%
+first_encounters <- raw_demographics %>%
+    semi_join(include, by = "pie.id") %>%
+    left_join(raw_encounters[c("pie.id", "admit.datetime")], by = "pie.id") %>%
     group_by(person.id) %>%
     arrange(admit.datetime) %>%
     summarize(pie.id = first(pie.id))
 
-excl.readmit <- anti_join(include, tmp.visits, by = "pie.id")
+patients$exclude_readmission = first_encounters$pie.id
 
-patients$exclude_readmission = excl.readmit$pie.id
+include <- semi_join(include, first_encounters, by = "pie.id")
 
-include <- semi_join(include, tmp.visits, by = "pie.id")
-
-# included patients ----
+# included patients ------------------------------------
 
 patients$include = include$pie.id
 
-save_rds(dir.save, "^patients")
+write_rds(patients, "data/final/patients.Rds")
