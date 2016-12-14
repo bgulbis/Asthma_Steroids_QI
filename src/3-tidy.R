@@ -2,6 +2,7 @@
 
 library(tidyverse)
 library(stringr)
+library(lubridate)
 library(edwr)
 library(icd)
 
@@ -94,58 +95,69 @@ data_steroids <- tmp_steroids %>%
               duration = difftime(last(med.datetime), first(med.datetime),
                                   units = "hours"))
 
-# adjunct medications ----
+# adjunct medications ----------------------------------
 
-tmp.first.steroid <- data.steroids %>%
+tmp_first_steroid <- data_steroids %>%
     group_by(pie.id) %>%
     summarize(first.datetime = first(first.datetime))
 
-tmp.meds.sched <- read_edw_data(dir.patients, "meds_sched") %>%
+ref <- tibble(name = c("albuterol", "ipratropium", "albuterol-ipratropium",
+                       "ipratropium nasal", "magnesium sulfate",
+                       "magnesium oxide", "terbutaline"),
+              type = "med",
+              group = "sched")
+
+raw_meds_sched <- read_data(dir_raw, "meds_sched_asthma") %>%
+    as.meds_sched() %>%
+    tidy_data(ref) %>%
     semi_join(include, by = "pie.id")
 
-tmp.meds <- tmp.meds.sched %>%
-    filter(med %in% c("albuterol", "ipratropium", "albuterol-ipratropium",
-                      "ipratropium nasal", "magnesium sulfate",
-                      "magnesium oxide", "terbutaline")) %>%
-    inner_join(tmp.first.steroid, by = "pie.id") %>%
+tmp_meds <- raw_meds_sched %>%
+    inner_join(tmp_first_steroid, by = "pie.id") %>%
     group_by(pie.id, med) %>%
     arrange(med.datetime)
 
-tmp.meds.adjunct <- tmp.meds %>%
+tmp_meds_adjunct <- tmp_meds %>%
     filter(med.datetime > first.datetime) %>%
     group_by(pie.id, med, med.dose.units) %>%
     summarize(total.dose.after = sum(med.dose))
 
-data.meds.adjunct <- tmp.meds %>%
+data_meds_adjunct <- tmp_meds %>%
     group_by(pie.id, med, med.dose.units) %>%
     summarize(total.dose = sum(med.dose)) %>%
-    full_join(tmp.meds.adjunct, by = c("pie.id", "med", "med.dose.units"))
+    full_join(tmp_meds_adjunct, by = c("pie.id", "med", "med.dose.units"))
 
-ref.cont.meds <- data_frame(name = "albuterol", type = "med", group = "cont")
+ref_cont <- tibble(name = "albuterol", type = "med", group = "cont")
 
-tmp.meds.cont <- edwr::read_edw_data(dir.patients, "meds_cont_detail") %>%
+raw_albuterol_cont <- read_data(dir_raw, "meds_cont_asthma") %>%
+    as.meds_cont() %>%
+    tidy_data(ref_cont, raw_meds_sched) %>%
+    semi_join(include, by = "pie.id")
+
+# concat_encounters(tmp.meds.cont$order.id, 900)
+
+tmp_albuterol_dc <- read_data(dir_raw, "order_detail") %>%
+    as.order_detail() %>%
     semi_join(include, by = "pie.id") %>%
-    tidy_data("meds_cont", ref.data = ref.cont.meds, sched.data = tmp.meds.sched)
-
-concat_encounters(tmp.meds.cont$order.id, 900)
-
-tmp.meds.cont.dc <- edwr::read_edw_data(dir.patients, "order_detail") %>%
     filter(action.type == "Discontinue",
            ingredient == "albuterol") %>%
     distinct(pie.id, order.id, action.datetime) %>%
     rename(dc.datetime = action.datetime)
 
-tmp.meds.cont.order <- edwr::read_edw_data(dir.patients, "order_detail") %>%
+tmp_albuterol_order <- read_data(dir_raw, "order_detail") %>%
+    as.order_detail() %>%
+    semi_join(include, by = "pie.id") %>%
     filter(action.type == "Order",
-           ingredient == "albuterol")
+           ingredient == "albuterol") %>%
+    dmap_at("ingredient.dose", as.numeric)
 
-tmp.meds.cont.alb <- tmp.meds.cont %>%
+tmp_albuterol_cont <- raw_albuterol_cont %>%
     filter(str_detect(event.tag, "Begin Bag")) %>%
-    full_join(tmp.meds.cont.order, by = c("pie.id", "order.id")) %>%
-    full_join(tmp.meds.cont.dc, by = c("pie.id", "order.id")) %>%
+    full_join(tmp_albuterol_order, by = c("pie.id", "order.id")) %>%
+    full_join(tmp_albuterol_dc, by = c("pie.id", "order.id")) %>%
     select(pie.id:med, route, event.tag, ingredient.dose, ingredient.unit,
            dc.datetime) %>%
-    inner_join(tmp.first.steroid, by = "pie.id") %>%
+    inner_join(tmp_first_steroid, by = "pie.id") %>%
     distinct(pie.id, order.id, .keep_all = TRUE) %>%
     group_by(pie.id) %>%
     mutate(dc.datetime = coalesce(dc.datetime, lead(med.datetime)),
@@ -180,8 +192,8 @@ tmp.meds.cont.alb <- tmp.meds.cont %>%
     select(pie.id, med, med.dose.units = ingredient.unit, total.dose, total.dose.after) %>%
     filter(total.dose > 0)
 
-data.meds.adjunct <- bind_rows(data.meds.adjunct, tmp.meds.cont.alb) %>%
-    mutate(total.dose.after = coalesce(total.dose.after, 0))
+data_meds_adjunct <- bind_rows(data_meds_adjunct, tmp_albuterol_cont) %>%
+    dmap_at("total.dose.after", ~ coalesce(.x, 0))
 
 # readmissions ----
 
