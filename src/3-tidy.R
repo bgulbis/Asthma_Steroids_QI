@@ -1,6 +1,7 @@
 # tidy
 
 library(tidyverse)
+library(stringr)
 library(edwr)
 library(icd)
 
@@ -17,8 +18,13 @@ data_demographics <- read_data(dir_raw, "demographics") %>%
 
 # groups -----------------------------------------------
 
+ref <- tibble(name = c("dexamethasone", "prednisone", "prednisolone"),
+              type = "med",
+              group = "sched")
+
 tmp_steroids <- read_data(dir_raw, "meds_freq") %>%
     as.meds_freq() %>%
+    tidy_data(ref) %>%
     semi_join(include, by = "pie.id")
 
 data_groups <- tmp_steroids %>%
@@ -39,25 +45,29 @@ data_primary_diagnosis <- read_data(dir_raw, "diagnosis") %>%
 
 # measures ---------------------------------------------
 
-tmp.measures <- read_edw_data(dir.patients, "measures") %>%
+tmp_measures <- read_data(dir_raw, "measures") %>%
+    as.measures() %>%
     semi_join(include, by = "pie.id")
 
-tmp.height <- filter(tmp.measures, measure == "Height",
-                     measure.units == "cm") %>%
+tmp_height <- tmp_measures %>%
+    filter(measure == "height",
+           measure.units == "cm") %>%
     group_by(pie.id) %>%
     arrange(measure.datetime) %>%
     summarize(height = first(measure.result))
 
-data.measures <- filter(tmp.measures, measure == "Weight",
-                        measure.units == "kg") %>%
+data_measures <- tmp_measures %>%
+    filter(measure == "weight",
+           measure.units == "kg") %>%
     group_by(pie.id) %>%
     arrange(measure.datetime) %>%
     summarize(weight = first(measure.result)) %>%
-    left_join(tmp.height, by = "pie.id")
+    left_join(tmp_height, by = "pie.id")
 
-# asthma assessment ----
+# asthma assessment ------------------------------------
 
-data.asthma <- read_edw_data(dir.patients, "scores", "events") %>%
+data_asthma <- read_data(dir_raw, "scores") %>%
+    as.events() %>%
     semi_join(include, by = "pie.id") %>%
     mutate(post = ifelse(str_detect(event, "post"), TRUE, FALSE),
            event = str_replace_all(event, "  ", " "),
@@ -70,9 +80,9 @@ data.asthma <- read_edw_data(dir.patients, "scores", "events") %>%
     group_by(pie.id, event.datetime, post) %>%
     spread(event, event.result)
 
-# steroids ----
+# steroids ---------------------------------------------
 
-data.steroids <- tmp.steroids %>%
+data_steroids <- tmp_steroids %>%
     group_by(pie.id, med) %>%
     arrange(med.datetime) %>%
     summarize(num.doses = n(),
