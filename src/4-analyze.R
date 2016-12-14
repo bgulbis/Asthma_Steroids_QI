@@ -1,28 +1,28 @@
 # analyze
 
-source("0-library.R")
+library(tidyverse)
 
-tmp <- get_rds(dir.save)
+tmp <- dirr::get_rds("data/tidy")
 
-analyze.patients <- select(data.demographics, pie.id, age, sex, length.stay) %>%
-    inner_join(data.groups, by = "pie.id") %>%
-    inner_join(data.measures, by = "pie.id") %>%
-    inner_join(data.primary.diagnosis[c("pie.id", "diag.code", "icd.description")],
+analyze_patients <- select(data_demographics, pie.id, age, sex, length.stay) %>%
+    inner_join(data_groups, by = "pie.id") %>%
+    inner_join(data_measures, by = "pie.id") %>%
+    inner_join(data_primary_diagnosis[c("pie.id", "diag.code", "icd.description")],
                by = "pie.id") %>%
-    inner_join(data.readmit, by = "pie.id") %>%
-    inner_join(data.picu, by = "pie.id") %>%
-    inner_join(data.emesis, by = "pie.id")
+    inner_join(data_readmit, by = "pie.id") %>%
+    inner_join(data_picu, by = "pie.id") %>%
+    inner_join(data_emesis, by = "pie.id")
 
-analyze.scores <- inner_join(data.groups, data.asthma, by = "pie.id")
+analyze_scores <- inner_join(data_groups, data_asthma, by = "pie.id")
 
-analyze.steroids <- select(data.steroids, -first.datetime, -last.datetime) %>%
-    inner_join(data.groups, by = "pie.id")
+analyze_steroids <- select(data_steroids, -first.datetime, -last.datetime) %>%
+    inner_join(data_groups, by = "pie.id")
 
-analyze.meds.adjunct <- inner_join(data.groups, data.meds.adjunct, by = "pie.id")
+analyze_meds_adjunct <- inner_join(data_groups, data_meds_adjunct, by = "pie.id")
 
-analyze.identifiers <- select(data.identifiers, -person.id)
+analyze_identifiers <- select(data_identifiers, -person.id)
 
 to.save <- ls(pattern = "^analyze")
-walk(to.save, ~ write_csv(get(.x), paste0(dir.save, "/", .x, ".csv")))
+walk(to.save, ~ write_csv(get(.x), paste0("data/final/", .x, ".csv")))
 
-save_rds(dir.save, "^analyze")
+dirr::save_rds("data/final", "^analyze")
