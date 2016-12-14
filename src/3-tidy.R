@@ -14,8 +14,7 @@ include <- tibble(pie.id = patients$include)
 
 data_demographics <- read_data(dir_raw, "demographics") %>%
     as.demographics() %>%
-    semi_join(include, by = "pie.id") %>%
-    select(-person.id)
+    semi_join(include, by = "pie.id")
 
 # groups -----------------------------------------------
 
@@ -195,18 +194,20 @@ tmp_albuterol_cont <- raw_albuterol_cont %>%
 data_meds_adjunct <- bind_rows(data_meds_adjunct, tmp_albuterol_cont) %>%
     dmap_at("total.dose.after", ~ coalesce(.x, 0))
 
-# readmissions ----
+# readmissions -----------------------------------------
 
-tmp.encounters <- read_edw_data(dir.patients, "encounters")
+raw_encounters <- read_data(dir_raw, "encounters") %>%
+    as.encounters()
 
-tmp.index <- tmp.encounters%>%
+tmp_index <- raw_encounters%>%
     group_by(person.id) %>%
     arrange(admit.datetime) %>%
-    left_join(data.demographics[c("pie.id", "age")], by = "pie.id") %>%
+    left_join(data_demographics[c("pie.id", "age")], by = "pie.id") %>%
     filter(!is.na(age)) %>%
     select(person.id, index.datetime = admit.datetime)
 
-tmp.readmit <- inner_join(tmp.encounters, tmp.index, by = "person.id") %>%
+tmp_readmit <- raw_encounters %>%
+    inner_join(tmp_index, by = "person.id") %>%
     filter(admit.datetime > index.datetime,
            visit.type %in% c("Inpatient", "OBS Observation Patient")) %>%
     group_by(person.id) %>%
@@ -214,8 +215,8 @@ tmp.readmit <- inner_join(tmp.encounters, tmp.index, by = "person.id") %>%
                                    units = "days")) %>%
     summarize(readmit.days = min(readmit.days))
 
-data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
-                          tmp.readmit[c("person.id", "readmit.days")],
+data_readmit <- left_join(data_demographics[c("pie.id", "person.id")],
+                          tmp_readmit[c("person.id", "readmit.days")],
                           by = "person.id") %>%
     mutate(readmit.30days = if_else(readmit.days <= 30, TRUE, FALSE, FALSE),
            readmit.7days = if_else(readmit.days <= 7, TRUE, FALSE, FALSE)) %>%
@@ -223,23 +224,25 @@ data.readmit <- left_join(data.demographics[c("pie.id", "person.id")],
 
 # icu admission ----
 
-tmp.locations <- read_edw_data(dir.patients, "locations") %>%
+raw_locations <- read_data(dir_raw, "locations") %>%
+    as.locations() %>%
+    tidy_data() %>%
     semi_join(include, by = "pie.id") %>%
-    tidy_data("locations") %>%
     filter(location == "Hermann 9 Pediatric Intensive Care Unit") %>%
     distinct(pie.id, .keep_all = TRUE)
 
-data.picu <- left_join(data.demographics["pie.id"],
-                       tmp.locations[c("pie.id", "location")],
+data_picu <- left_join(data_demographics["pie.id"],
+                       raw_locations[c("pie.id", "location")],
                        by = "pie.id") %>%
     mutate(picu.admit = ifelse(!is.na(location), TRUE, FALSE)) %>%
     select(-location)
 
-# vomiting ----
+# vomiting ---------------------------------------------
 
-tmp.emesis <- read_edw_data(dir.patients, "vomit", "events") %>%
+raw_emesis <- read_data(dir_raw, "vomit") %>%
+    as.events() %>%
     semi_join(include, by = "pie.id") %>%
-    inner_join(data.steroids[c("pie.id", "first.datetime", "last.datetime")],
+    inner_join(data_steroids[c("pie.id", "first.datetime", "last.datetime")],
                by = "pie.id") %>%
     mutate(event.result = as.numeric(event.result)) %>%
     filter(event.result > 0,
@@ -247,18 +250,16 @@ tmp.emesis <- read_edw_data(dir.patients, "vomit", "events") %>%
            event.datetime < last.datetime + hours(24)) %>%
     distinct(pie.id, .keep_all = TRUE)
 
-data.emesis <- left_join(data.demographics["pie.id"],
-                         tmp.emesis[c("pie.id", "event.result")],
+data_emesis <- left_join(data_demographics["pie.id"],
+                         raw_emesis[c("pie.id", "event.result")],
                          by = "pie.id") %>%
     mutate(emesis = ifelse(!is.na(event.result), TRUE, FALSE)) %>%
     select(-event.result)
 
-# identifiers ----
+# identifiers ------------------------------------------
 
-data.identifiers <- read_edw_data(dir.patients, "identifiers", "id") %>%
+data_identifiers <- read_data(dir_raw, "identifiers") %>%
+    as.id() %>%
     semi_join(include, by = "pie.id")
 
-# save data files
-
-save_rds(dir.save, "^data")
-
+dirr::save_rds("data/tidy", "data_")
