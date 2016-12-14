@@ -48,13 +48,21 @@ edw_eligible <- concat_encounters(eligible_pie$pie.id)
 write_rds(eligible_pie, "data/final/eligible.Rds", compress = "gz")
 
 # run the following queries:
+#   * Clinical Events - Prompt
+#       - RC Acc Muscle Pre Asthma Assess; RC Air Exch Pre Asthma Assess; RC Pre Asthma Assess Total; RC Resp Rate Pre Asthma Assess; RC Rm Air O2 Sat Pre Asthma Assess; RC Wheezes Pre Asthma Assess; Asthma Treatment Recommended; RC Asthma Treatment Recommended; RC Air Exch Post Asthma Assess; RC Resp Rate Post Asthma Assess; RC Rm Air O2 Sat Post Asthma Assess; RC Acc Muscle Post Asthma Assess; RC Post Asthma Assess Total; RC Wheezes Post Asthma Assess
 #   * Demographics
+#   * Identifiers - by PowerInsight Encounter Id
 #   * Labs - Pregnancy
 #   * Location History
+#   * Measures (Height and Weight)
+#   * Medications - Inpatient Continuous - All
+#   * Medications - Inpatient Continuous - Prompt
+#       - Clinical Event: albuterol
 #   * Medications - Inpatient Intermittent - Prompt
 #       - Clinical Event: racepinephrine
 #   * Medications - Inpatient Intermittent with Frequency - Prompt
 #       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
+#   * Vomiting Output
 
 raw_demographics <- read_data(dir_raw, "demographics") %>%
     as.demographics()
@@ -63,3 +71,18 @@ edw_person <- concat_encounters(raw_demographics$person.id)
 
 # run the following queries:
 #   * Encounters - by Person ID
+
+raw_meds_sched <- read_data(dir_raw, "meds_sched") %>%
+    as.meds_sched()
+
+ref <- tibble(name = "albuterol", type = "med", group = "cont")
+
+raw_albuterol <- read_data(dir_raw, "meds_cont_asthma") %>%
+    as.meds_cont() %>%
+    tidy_data(ref, raw_meds_sched) %>%
+    distinct(order.id)
+
+edw_order <- concat_encounters(raw_albuterol$order.id)
+
+# run the following queries:
+#   * Orders - from Clinical Event Id - Prompt
