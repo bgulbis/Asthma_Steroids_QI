@@ -1,49 +1,43 @@
 # tidy
 
-source("0-library.R")
+library(tidyverse)
+library(edwr)
+library(icd)
 
-tmp <- get_rds(dir.save)
+dir_raw <- "data/raw"
+patients <- read_rds("data/final/patients.Rds")
+include <- tibble(pie.id = patients$include)
 
-include <- data_frame(pie.id = patients$include)
+# demographics -----------------------------------------
 
-# demographics ----
+data_demographics <- read_data(dir_raw, "demographics") %>%
+    as.demographics() %>%
+    semi_join(include, by = "pie.id") %>%
+    select(-person.id)
 
-data.demographics <- read_edw_data(dir.patients, "demographics") %>%
+# groups -----------------------------------------------
+
+tmp_steroids <- read_data(dir_raw, "meds_freq") %>%
+    as.meds_freq() %>%
     semi_join(include, by = "pie.id")
 
-# groups ----
-
-tmp.steroids <- read_edw_data(dir.patients, "meds_freq", "meds_sched_freq") %>%
-    semi_join(include, by = "pie.id")
-
-data.groups <- tmp.steroids %>%
-    mutate(dex = ifelse(med == "dexamethasone", TRUE, FALSE)) %>%
+data_groups <- tmp_steroids %>%
+    mutate(dex = med == "dexamethasone") %>%
     group_by(pie.id) %>%
-    summarize(group = ifelse(sum(dex) >= 1, "dexamethasone", "prednisone"))
+    summarize(group = sum(dex) >= 1) %>%
+    mutate(group = if_else(group, "dexamethasone", "prednisone"))
 
-# primary diagnosis ----
+# primary diagnosis ------------------------------------
 
-tmp.icd9 <- read_edw_data(dir.patients, "icd9") %>%
+data_primary_diagnosis <- read_data(dir_raw, "diagnosis") %>%
+    as.diagnosis() %>%
+    tidy_data() %>%
     semi_join(include, by = "pie.id") %>%
     filter(diag.type == "Final",
-           diag.seq == 1)
+           diag.seq == 1) %>%
+    by_row(~icd_explain(.x$diag.code), .to = "descr", .collate = "rows")
 
-tmp <- icd_description(tmp.icd9$diag.code)
-
-tmp.icd9 <- inner_join(tmp.icd9, tmp, by = c("diag.code" = "icd.code"))
-
-tmp.icd10 <- read_edw_data(dir.patients, "icd10") %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(diag.type == "Final",
-           diag.seq == 1)
-
-tmp <- icd_description(tmp.icd10$diag.code, icd10 = TRUE)
-
-tmp.icd10 <- inner_join(tmp.icd10, tmp, by = c("diag.code" = "icd.code"))
-
-data.primary.diagnosis <- bind_rows(tmp.icd9, tmp.icd10)
-
-# measures ----
+# measures ---------------------------------------------
 
 tmp.measures <- read_edw_data(dir.patients, "measures") %>%
     semi_join(include, by = "pie.id")
