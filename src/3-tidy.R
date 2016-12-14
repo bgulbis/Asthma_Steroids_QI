@@ -41,7 +41,7 @@ data_primary_diagnosis <- read_data(dir_raw, "diagnosis") %>%
     semi_join(include, by = "pie.id") %>%
     filter(diag.type == "Final",
            diag.seq == 1) %>%
-    by_row(~icd_explain(.x$diag.code), .to = "descr", .collate = "rows")
+    by_row(~icd_explain(.x$diag.code), .to = "icd.description", .collate = "rows")
 
 # measures ---------------------------------------------
 
