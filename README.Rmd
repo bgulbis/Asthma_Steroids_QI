@@ -1,11 +1,9 @@
 ---
 title: Dexamethasone versus Prednisone/Prednisolone for the Treatment of an Acute
   Asthma Exacerbation in the Pediatric Population
-author: "Jessica Hoover, Shannan Eades"
-date: "April 25, 2016"
-output: 
-  html_document: 
-    keep_md: yes
+author: "Shannan Eades, Jessica Hoover"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: github_document
 ---
 
 ## Objective
@@ -28,7 +26,7 @@ To compare efficacy and safety outcomes between children receiving a two-dose re
     - ICD-10-CM code: J45.901
 * Received therapy with either dexamethasone or prednisone/prednisolone
 * Admitted to Children’s Memorial Hermann Hospital
-* Admitted between January 1, 2014 to December 31, 2015
+* Admitted between January 1, 2014 to September 30, 2016
 
 ### Exclusion Criteria:  
 
@@ -46,7 +44,7 @@ To compare efficacy and safety outcomes between children receiving a two-dose re
 4.	Asthma Assessment Score
 5.	Medication
     a.	Dexamethasone dose (mg), duration of therapy, dosing interval (days and hours)
-    b.	Prednisone/prednisolone dose (mg), number of doses, duration of therapy, dosing interval (days and hours)
+    b.	Prednisone/prednisolone/methylprednisolone dose (mg), number of doses, duration of therapy, dosing interval (days and hours)
     c.	Total albuterol (mg), ipratropium (mg), magnesium (mg), terbutaline (mg)
 6.	7- and 30-day hospital readmission
 7.	Transfer to the ICU during admission
