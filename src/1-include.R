@@ -7,21 +7,21 @@ library(edwr)
 dir_raw <- "data/raw"
 
 # step 1 -----------------------------------------------
-# run query:
-#   * Patients - By Medication
-#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
-#       - Person Location- Facility (Curr): Memorial Hermann Children's Hospital
-#       - Admit date: User-Defined
+# run MBO query:
+#   * Patients - By Medication (Generic)
+#       - Medication (Generic): dexamethasone, methylprednisOLONE, predniSONE, prednisoLONE
+#       - Facility (Curr): HC Children's
+#       - Date Only - Admit
 
 # filter data
 raw_patients <- read_data(dir_raw, "patients") %>%
-    as.patients() %>%
-    filter(age >= 4,
-           age <= 17,
-           visit.type != "Outpatient",
+    as.patients(FALSE, tzone = "UTC") %>%
+    filter(age >= 4, age <= 17,
+           visit.type != "Outpatient", visit.type != "Emergency",
            discharge.datetime <= mdy_hms("09/30/2016 23:59:59", tz = "US/Central"))
 
-edw_pie <- concat_encounters(raw_patients$pie.id)
+# edw_pie <- concat_encounters(raw_patients$pie.id)
+mbo_pie <- concat_encounters(raw_patients$millennium.id)
 
 # step 2 -----------------------------------------------
 # screen for diagnosis codes of acute asthma exacerbation
