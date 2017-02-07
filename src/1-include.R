@@ -14,20 +14,19 @@ dir_raw <- "data/raw/mbo"
 #       - Date Only - Admit
 
 # filter data
-raw_patients <- read_data(dir_raw, "patients") %>%
-    as.patients(FALSE, tzone = "UTC") %>%
+raw_patients <- read_data(dir_raw, "patients", FALSE) %>%
+    as.patients() %>%
     filter(age >= 4, age <= 17,
            visit.type != "Outpatient", visit.type != "Emergency",
            discharge.datetime <= mdy_hms("09/30/2016 23:59:59", tz = "US/Central"))
 
-# edw_pie <- concat_encounters(raw_patients$pie.id)
 mbo_pie <- concat_encounters(raw_patients$millennium.id)
 
 # step 2 -----------------------------------------------
 # screen for diagnosis codes of acute asthma exacerbation
 
 # run the following queries:
-#   * Diagnosis Codes (ICD-9/10-CM) - All
+#   * Diagnosis Codes (ICD-9/10-CM)
 
 ref_icd9 <- c("493.92", "493.02", "493.12", "493.22", "493.01", "493.11",
               "493.21", "493.91")
@@ -35,15 +34,15 @@ ref_icd9 <- c("493.92", "493.02", "493.12", "493.22", "493.01", "493.11",
 ref_icd10 <- c("J45.901", "J45.21", "J45.31", "J45.41", "J45.51", "J45.22",
                "J45.32", "J45.42", "J45.52", "J45.902")
 
-eligible_pie <- read_data(dir_raw, "diagnosis") %>%
+eligible_pts <- read_data(dir_raw, "diagnosis", FALSE) %>%
     as.diagnosis() %>%
-    filter((diag.code %in% ref_icd9 & code.source == "ICD-9-CM") |
-               (diag.code %in% ref_icd10 & code.source == "ICD-10-CM")) %>%
-    distinct(pie.id)
+    filter((diag.code %in% ref_icd9 & code.source %in% c("ICD-9-CM", "ICD9")) |
+               (diag.code %in% ref_icd10 & code.source %in% c("ICD-10-CM", "ICD10-CM"))) %>%
+    distinct(millennium.id)
 
-edw_eligible <- concat_encounters(eligible_pie$pie.id)
+mbo_eligible <- concat_encounters(eligible_pts$millennium.id)
 
-write_rds(eligible_pie, "data/final/eligible.Rds", compress = "gz")
+write_rds(eligible_pts, "data/final/eligible.Rds", compress = "gz")
 
 # step 3 -----------------------------------------------
 # run the following queries:
