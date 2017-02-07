@@ -4,7 +4,7 @@ library(tidyverse)
 library(lubridate)
 library(edwr)
 
-dir_raw <- "data/raw"
+dir_raw <- "data/raw/mbo"
 
 # step 1 -----------------------------------------------
 # run MBO query:
