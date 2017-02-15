@@ -45,24 +45,21 @@ mbo_eligible <- concat_encounters(eligible_pts$millennium.id)
 write_rds(eligible_pts, "data/final/eligible.Rds", compress = "gz")
 
 # step 3 -----------------------------------------------
-# run the following queries:
+# run the following MBO queries:
 #   * Clinical Events - Prompt
 #       - RC Acc Muscle Pre Asthma Assess; RC Air Exch Pre Asthma Assess; RC Pre Asthma Assess Total; RC Resp Rate Pre Asthma Assess; RC Rm Air O2 Sat Pre Asthma Assess; RC Wheezes Pre Asthma Assess; Asthma Treatment Recommended; RC Asthma Treatment Recommended; RC Air Exch Post Asthma Assess; RC Resp Rate Post Asthma Assess; RC Rm Air O2 Sat Post Asthma Assess; RC Acc Muscle Post Asthma Assess; RC Post Asthma Assess Total; RC Wheezes Post Asthma Assess
 #   * Demographics
-#   * Identifiers - by PowerInsight Encounter Id
 #   * Labs - Pregnancy
 #   * Location History
-#   * Measures (Height and Weight)
-#   * Medications - Inpatient Continuous - All
-#   * Medications - Inpatient Continuous - Prompt
-#       - Clinical Event: albuterol
-#   * Medications - Inpatient Intermittent - Prompt
-#       - Clinical Event: racepinephrine
-#   * Medications - Inpatient Intermittent with Frequency - Prompt
-#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
+#   * Measures
+#   * Medications - Inpatient - Prompt
+#       - Medication (Generic): albuterol, racepinephrine, dexamethasone, methylPREDNISolone, predniSONE, prednisoLONE
 #   * Vomiting Output
 
-raw_demographics <- read_data(dir_raw, "demographics") %>%
+# run the following EDW queries:
+#   * Identifiers - by Millennium Id
+
+raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics()
 
 edw_person <- concat_encounters(raw_demographics$person.id)
