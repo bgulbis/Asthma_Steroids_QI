@@ -4,13 +4,13 @@ library(tidyverse)
 library(edwr)
 library(icd)
 
-dir_raw <- "data/raw"
+dir_raw <- "data/raw/mbo"
 
-eligible_pie <- read_rds("data/final/eligible.Rds")
+eligible_pts <- read_rds("data/final/eligible.Rds")
 
-patients <- list(eligible = eligible_pie$pie.id)
+patients <- list(eligible = eligible_pts$millennium.id)
 
-raw_diagnosis <- read_data(dir_raw, "diagnosis") %>%
+raw_diagnosis <- read_data(dir_raw, "diagnosis", FALSE) %>%
     as.diagnosis() %>%
     tidy_data()
 
@@ -20,17 +20,17 @@ raw_diagnosis <- read_data(dir_raw, "diagnosis") %>%
 excl_preg_diagnosis <- raw_diagnosis %>%
     check_pregnant()
 
-excl_preg_labs <- read_data(dir_raw, "labs_preg") %>%
+excl_preg_labs <- read_data(dir_raw, "labs-preg", FALSE) %>%
     as.labs() %>%
-    tidy_data() %>%
+    # tidy_data() %>%
     check_pregnant()
 
 excl_preg <- bind_rows(excl_preg_diagnosis, excl_preg_labs) %>%
-    distinct(pie.id)
+    distinct(millennium.id)
 
-patients$exclude_pregnant = excl_preg$pie.id
+patients$exclude_pregnant = excl_preg$millennium.id
 
-include <- anti_join(eligible_pie, excl_preg, by = "pie.id")
+include <- anti_join(eligible_pts, excl_preg, by = "millennium.id")
 
 # icu admission ----------------------------------------
 # exclude patients who were first admitted to the PICU
