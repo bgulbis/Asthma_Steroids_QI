@@ -9,7 +9,8 @@ dir_raw <- "data/raw/mbo"
 # step 1 -----------------------------------------------
 # run MBO query:
 #   * Patients - By Medication (Generic)
-#       - Medication (Generic): dexamethasone, methylprednisOLONE, predniSONE, prednisoLONE
+#       - Medication (Generic): dexamethasone, methylprednisOLONE, predniSONE,
+#       prednisoLONE
 #       - Facility (Curr): HC Children's
 #       - Date Only - Admit
 
@@ -45,41 +46,45 @@ mbo_eligible <- concat_encounters(eligible_pts$millennium.id)
 write_rds(eligible_pts, "data/final/eligible.Rds", compress = "gz")
 
 # step 3 -----------------------------------------------
+# get main data files
+
 # run the following MBO queries:
 #   * Clinical Events - Prompt
-#       - RC Acc Muscle Pre Asthma Assess; RC Air Exch Pre Asthma Assess; RC Pre Asthma Assess Total; RC Resp Rate Pre Asthma Assess; RC Rm Air O2 Sat Pre Asthma Assess; RC Wheezes Pre Asthma Assess; Asthma Treatment Recommended; RC Asthma Treatment Recommended; RC Air Exch Post Asthma Assess; RC Resp Rate Post Asthma Assess; RC Rm Air O2 Sat Post Asthma Assess; RC Acc Muscle Post Asthma Assess; RC Post Asthma Assess Total; RC Wheezes Post Asthma Assess
+#       - RC Acc Muscle Pre Asthma Assess; RC Air Exch Pre Asthma Assess; RC Pre
+#       Asthma Assess Total; RC Resp Rate Pre Asthma Assess; RC Rm Air O2 Sat
+#       Pre Asthma Assess; RC Wheezes Pre Asthma Assess; Asthma Treatment
+#       Recommended; RC Asthma Treatment Recommended; RC Air Exch Post Asthma
+#       Assess; RC Resp Rate Post Asthma Assess; RC Rm Air O2 Sat Post Asthma
+#       Assess; RC Acc Muscle Post Asthma Assess; RC Post Asthma Assess Total;
+#       RC Wheezes Post Asthma Assess
 #   * Demographics
 #   * Labs - Pregnancy
 #   * Location History
 #   * Measures
 #   * Medications - Inpatient - Prompt
-#       - Medication (Generic): albuterol, racepinephrine, dexamethasone, methylPREDNISolone, predniSONE, prednisoLONE
-#   * Vomiting Output
+#       - Medication (Generic): albuterol, racepinephrine, dexamethasone,
+#       methylPREDNISolone, predniSONE, prednisoLONE
 
 # run the following EDW queries:
 #   * Identifiers - by Millennium Id
 
-raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
-    as.demographics()
-
-edw_person <- concat_encounters(raw_demographics$person.id)
-
 # step 4 -----------------------------------------------
-# run the following queries:
+# make list of Person ID and PIE
+
+# run the following EDW queries:
 #   * Encounters - by Person ID
-
-raw_meds_sched <- read_data(dir_raw, "meds_sched") %>%
-    as.meds_sched()
-
-ref <- tibble(name = "albuterol", type = "med", group = "cont")
-
-raw_albuterol <- read_data(dir_raw, "meds_cont_asthma") %>%
-    as.meds_cont() %>%
-    tidy_data(ref, raw_meds_sched) %>%
-    distinct(order.id)
-
-edw_order <- concat_encounters(raw_albuterol$order.id)
+#   * Vomiting Output
 
 # step 5 -----------------------------------------------
-# run the following queries:
-#   * Orders - from Clinical Event Id - Prompt
+# get order actions to use for continuous albuterol discontinue time
+
+raw_albuterol <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    filter(!is.na(event.tag),
+           med == "albuterol") %>%
+    distinct(order.id)
+
+mbo_order <- concat_encounters(raw_albuterol$order.id)
+
+# run the MBO query:
+#   * Orders - Actions - by Order Id
