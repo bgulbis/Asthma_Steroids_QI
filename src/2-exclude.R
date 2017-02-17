@@ -35,19 +35,21 @@ include <- anti_join(eligible_pts, excl_preg, by = "millennium.id")
 # icu admission ----------------------------------------
 # exclude patients who were first admitted to the PICU
 
-picu <- "Hermann 9 Pediatric Intensive Care Unit"
-ed <- "HC Virtual Pedi Emergency Dept"
+# picu <- "Hermann 9 Pediatric Intensive Care Unit"
+picu <- "HC PICU"
+# ed <- "HC Virtual Pedi Emergency Dept"
+ed <- c("HC EDPD", "HC VUPD", "HH ADMT")
 
-excl_locations <- read_data(dir_raw, "locations") %>%
+excl_locations <- read_data(dir_raw, "location", FALSE) %>%
     as.locations() %>%
     tidy_data() %>%
     filter((unit.count == 1 & location == picu) |
-               (unit.count == 2 & location == picu & lag(location) == ed)) %>%
-    distinct(pie.id)
+               (unit.count == 2 & location == picu & lag(location) %in% ed)) %>%
+    distinct(millennium.id)
 
-patients$exclude_icu = excl_locations$pie.id
+patients$exclude_icu = excl_locations$millennium.id
 
-include <- anti_join(include, excl_locations, by = "pie.id")
+include <- anti_join(include, excl_locations, by = "millennium.id")
 
 # other indications ------------------------------------
 # exclude if croup or anaphylactic shock
@@ -59,21 +61,21 @@ alt_diag10 <- list(croup = icd_children("J05.0"),
                    anaphylaxis = icd_children(c("T78.0", "T78.2", "T80.5", "T88.6")))
 
 excl_diag9 <- raw_diagnosis %>%
-    semi_join(include, by = "pie.id") %>%
-    icd_comorbid(alt_diag9, "pie.id", "diag.code", FALSE, return_df = TRUE) %>%
+    semi_join(include, by = "millennium.id") %>%
+    icd_comorbid(alt_diag9, "millennium.id", "diag.code", FALSE, return_df = TRUE) %>%
     filter(croup == TRUE | anaphylaxis == TRUE)
 
 excl_diag10 <- raw_diagnosis %>%
-    semi_join(include, by = "pie.id") %>%
-    icd_comorbid(alt_diag10, "pie.id", "diag.code", FALSE, return_df = TRUE) %>%
+    semi_join(include, by = "millennium.id") %>%
+    icd_comorbid(alt_diag10, "millennium.id", "diag.code", FALSE, return_df = TRUE) %>%
     filter(croup == TRUE | anaphylaxis == TRUE)
 
 excl_diag <- bind_rows(excl_diag9, excl_diag10) %>%
-    distinct(pie.id)
+    distinct(millennium.id)
 
-patients$exclude_alternate_indication = excl_diag$pie.id
+patients$exclude_alternate_indication = excl_diag$millennium.id
 
-include <- anti_join(include, excl_diag, by = "pie.id")
+include <- anti_join(include, excl_diag, by = "millennium.id")
 
 # both steroids ----------------------------------------
 # exclude patients who received both dexamethasone and prednisone/prednisolone
