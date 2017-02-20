@@ -21,7 +21,7 @@ raw_patients <- read_data(dir_raw, "patients", FALSE) %>%
            visit.type != "Outpatient", visit.type != "Emergency",
            discharge.datetime <= mdy_hms("09/30/2016 23:59:59", tz = "US/Central"))
 
-mbo_pie <- concat_encounters(raw_patients$millennium.id)
+mbo_encounter <- concat_encounters(raw_patients$millennium.id)
 
 # step 2 -----------------------------------------------
 # screen for diagnosis codes of acute asthma exacerbation
@@ -66,14 +66,27 @@ write_rds(eligible_pts, "data/final/eligible.Rds", compress = "gz")
 #       methylPREDNISolone, predniSONE, prednisoLONE
 
 # run the following EDW queries:
-#   * Identifiers - by Millennium Id
+#   * Output - Emesis
+#       - Millennium Encounter ID: values from mbo_eligible
+#       - PowerInsight Encounter Id: 1
+#   * Identifiers
+#       - Millennium Encounter ID: values from mbo_eligible
+#       - PowerInsight Encounter Id: 1
+#       - Formatted Financial Nbr: 1
+#       - Person ID: 1
 
 # step 4 -----------------------------------------------
 # make list of Person ID and PIE
 
+raw_person <- read_data(dir_raw, "identifiers") %>%
+    as.id() %>%
+    distinct(person.id)
+
+edw_person <- concat_encounters(raw_person$person.id)
+
 # run the following EDW queries:
 #   * Encounters - by Person ID
-#   * Vomiting Output
+#       - Person ID: value from edw_person
 
 # step 5 -----------------------------------------------
 # get order actions to use for continuous albuterol discontinue time
