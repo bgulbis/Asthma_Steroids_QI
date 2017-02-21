@@ -6,84 +6,85 @@ library(lubridate)
 library(edwr)
 library(icd)
 
-dir_raw <- "data/raw"
+dir_raw <- "data/raw/mbo"
 patients <- read_rds("data/final/patients.Rds")
-include <- tibble(pie.id = patients$include)
+include <- tibble(millennium.id = patients$include)
 
 # demographics -----------------------------------------
 
-data_demographics <- read_data(dir_raw, "demographics") %>%
+data_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics() %>%
-    semi_join(include, by = "pie.id")
+    semi_join(include, by = "millennium.id")
 
 # groups -----------------------------------------------
 
-ref <- tibble(name = c("dexamethasone", "prednisone", "prednisolone"),
-              type = "med",
-              group = "sched")
-
-tmp_steroids <- read_data(dir_raw, "meds_freq") %>%
-    as.meds_freq() %>%
-    tidy_data(ref) %>%
-    semi_join(include, by = "pie.id")
+# ref <- tibble(name = c("dexamethasone", "prednisone", "prednisolone"),
+#               type = "med",
+#               group = "sched")
+#
+tmp_steroids <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt() %>%
+    filter(med %in% c("dexamethasone", "methylprednisolone", "prednisolone", "prednisone")) %>%
+    # tidy_data(ref) %>%
+    semi_join(include, by = "millennium.id")
 
 data_groups <- tmp_steroids %>%
     mutate(dex = med == "dexamethasone") %>%
-    group_by(pie.id) %>%
+    group_by(millennium.id) %>%
     summarize(group = sum(dex) >= 1) %>%
     mutate(group = if_else(group, "dexamethasone", "prednisone"))
 
 # primary diagnosis ------------------------------------
 
-data_primary_diagnosis <- read_data(dir_raw, "diagnosis") %>%
+data_primary_diagnosis <- read_data(dir_raw, "diagnosis", FALSE) %>%
     as.diagnosis() %>%
     tidy_data() %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(diag.type == "Final",
-           diag.seq == 1) %>%
+    semi_join(include, by = "millennium.id") %>%
+    filter(diag.type == "FINAL",
+           diag.seq == "Primary") %>%
     by_row(~icd_explain(.x$diag.code), .to = "icd.description", .collate = "rows")
 
 # measures ---------------------------------------------
 
-tmp_measures <- read_data(dir_raw, "measures") %>%
+tmp_measures <- read_data(dir_raw, "measures", FALSE) %>%
     as.measures() %>%
-    semi_join(include, by = "pie.id")
+    semi_join(include, by = "millennium.id")
 
 tmp_height <- tmp_measures %>%
     filter(measure == "height",
            measure.units == "cm") %>%
-    group_by(pie.id) %>%
+    group_by(millennium.id) %>%
     arrange(measure.datetime) %>%
     summarize(height = first(measure.result))
 
 data_measures <- tmp_measures %>%
     filter(measure == "weight",
            measure.units == "kg") %>%
-    group_by(pie.id) %>%
+    group_by(millennium.id) %>%
     arrange(measure.datetime) %>%
     summarize(weight = first(measure.result)) %>%
-    left_join(tmp_height, by = "pie.id")
+    left_join(tmp_height, by = "millennium.id")
 
 # asthma assessment ------------------------------------
 
-data_asthma <- read_data(dir_raw, "scores") %>%
+data_asthma <- read_data(dir_raw, "events_asthma_scores", FALSE) %>%
     as.events() %>%
-    semi_join(include, by = "pie.id") %>%
+    semi_join(include, by = "millennium.id") %>%
     mutate(post = ifelse(str_detect(event, "post"), TRUE, FALSE),
            event = str_replace_all(event, "  ", " "),
            event = str_replace_all(event, "(rc|pre|post| asthma assess|asthma treatment )", ""),
            event = str_trim(event, "both"),
            event = str_replace_all(event, " ", "_")) %>%
     filter(event.result != "") %>%
-    group_by(pie.id, event.datetime, post, event) %>%
+    group_by(millennium.id, event.datetime, post, event) %>%
     summarize(event.result = first(event.result)) %>%
-    group_by(pie.id, event.datetime, post) %>%
+    group_by(millennium.id, event.datetime, post) %>%
     spread(event, event.result)
 
 # steroids ---------------------------------------------
 
 data_steroids <- tmp_steroids %>%
-    group_by(pie.id, med) %>%
+    group_by(millennium.id, med) %>%
     arrange(med.datetime) %>%
     summarize(num.doses = n(),
               first.dose = first(med.dose),
