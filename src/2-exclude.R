@@ -80,68 +80,67 @@ include <- anti_join(include, excl_diag, by = "millennium.id")
 # both steroids ----------------------------------------
 # exclude patients who received both dexamethasone and prednisone/prednisolone
 
-excl_steroids <- read_data(dir_raw, "meds_freq") %>%
-    as.meds_freq() %>%
-    semi_join(include, by = "pie.id") %>%
-    distinct(pie.id, med) %>%
-    mutate(med = factor(med),
-           value = TRUE) %>%
-    group_by(pie.id) %>%
-    select(pie.id, med, value) %>%
+raw_meds <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt()
+
+excl_steroids <- raw_meds %>%
+    filter(med %in% c("dexamethasone", "methylprednisolone", "prednisolone", "prednisone")) %>%
+    semi_join(include, by = "millennium.id") %>%
+    distinct(millennium.id, med) %>%
+    mutate(value = TRUE) %>%
     spread(med, value) %>%
-    filter(dexamethasone == TRUE,
-           (prednisone == TRUE | prednisolone == TRUE))
+    filter(dexamethasone == TRUE & (prednisone == TRUE | prednisolone == TRUE | methylprednisolone == TRUE))
 
-patients$exclude_multiple_steroids = excl_steroids$pie.id
+patients$exclude_multiple_steroids = excl_steroids$millennium.id
 
-include <- anti_join(include, excl_steroids, by = "pie.id")
+include <- anti_join(include, excl_steroids, by = "millennium.id")
 
 # racemic epi ------------------------------------------
 
-excl_racepi <- read_data(dir_raw, "meds_sched") %>%
-    as.meds_sched() %>%
+excl_racepi <- raw_meds %>%
     filter(med == "racepinephrine") %>%
-    distinct(pie.id)
+    distinct(millennium.id)
 
-patients$exclude_racemic_epi = excl_racepi$pie.id
+patients$exclude_racemic_epi = excl_racepi$millennium.id
 
-include <- anti_join(include, excl_racepi, by = "pie.id")
+include <- anti_join(include, excl_racepi, by = "millennium.id")
 
 # er visits -----------------------------------------
 # remove any ER encounters
+# no longer needed, ER encounters removed in include script
 
-raw_demographics <- read_data(dir_raw, "demographics") %>%
+raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics()
-
-excl_er <- raw_demographics %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(visit.type == "Emergency") %>%
-    distinct(pie.id)
-
-patients$exclude_er_visit = excl_er$pie.id
-
-include <- anti_join(include, excl_er, by = "pie.id")
+#
+# excl_er <- raw_demographics %>%
+#     semi_join(include, by = "millennium.id") %>%
+#     filter(visit.type == "Emergency") %>%
+#     distinct(millennium.id)
+#
+# patients$exclude_er_visit = excl_er$millennium.id
+#
+# include <- anti_join(include, excl_er, by = "millennium.id")
 
 # readmissions -----------------------------------------
 # remove any subsequent encounters
 
 raw_encounters <- read_data(dir_raw, "encounters") %>%
     as.encounters() %>%
-    semi_join(include, by = "pie.id")
+    semi_join(include, by = "millennium.id")
 
 first_encounters <- raw_demographics %>%
-    semi_join(include, by = "pie.id") %>%
-    left_join(raw_encounters[c("pie.id", "admit.datetime")], by = "pie.id") %>%
+    semi_join(include, by = "millennium.id") %>%
+    left_join(raw_encounters[c("millennium.id", "person.id", "admit.datetime")], by = "millennium.id") %>%
     group_by(person.id) %>%
     arrange(admit.datetime) %>%
-    summarize(pie.id = first(pie.id))
+    summarize(millennium.id = first(millennium.id))
 
-patients$exclude_readmission = first_encounters$pie.id
+patients$exclude_readmission = first_encounters$millennium.id
 
-include <- semi_join(include, first_encounters, by = "pie.id")
+include <- semi_join(include, first_encounters, by = "millennium.id")
 
 # included patients ------------------------------------
 
-patients$include = include$pie.id
+patients$include = include$millennium.id
 
 write_rds(patients, "data/final/patients.Rds")
