@@ -61,9 +61,7 @@ write_rds(eligible_pts, "data/final/eligible.Rds", compress = "gz")
 #   * Labs - Pregnancy
 #   * Location History
 #   * Measures
-#   * Medications - Inpatient - Prompt
-#       - Medication (Generic): albuterol, racepinephrine, dexamethasone,
-#       methylPREDNISolone, predniSONE, prednisoLONE
+#   * Medications - Inpatient - All
 
 # run the following EDW queries:
 #   * Output - Emesis
@@ -91,8 +89,10 @@ edw_person <- concat_encounters(raw_person$person.id)
 # step 5 -----------------------------------------------
 # get order actions to use for continuous albuterol discontinue time
 
-raw_albuterol <- read_data(dir_raw, "meds-inpt", FALSE) %>%
-    as.meds_inpt() %>%
+raw_meds_inpt <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt()
+
+raw_albuterol <- raw_meds_inpt %>%
     filter(!is.na(event.tag),
            med == "albuterol") %>%
     distinct(order.id)
@@ -101,3 +101,14 @@ mbo_order <- concat_encounters(raw_albuterol$order.id)
 
 # run the MBO query:
 #   * Orders - Actions - by Order Id
+
+raw_steroids <- raw_meds_inpt %>%
+    filter(med %in% c("dexamethasone", "methylprednisolone", "prednisolone", "prednisone")) %>%
+    dmap_at("order.parent.id", ~ na_if(.x, 0)) %>%
+    mutate(order.parent.id = coalesce(order.parent.id, order.id)) %>%
+    distinct(order.parent.id)
+
+mbo_details <- concat_encounters(raw_steroids$order.parent.id)
+
+# run the MBO query:
+#   * Orders - Details - by Order Id
