@@ -22,11 +22,16 @@ data_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
 #               type = "med",
 #               group = "sched")
 #
-tmp_steroids <- read_data(dir_raw, "meds-inpt", FALSE) %>%
-    as.meds_inpt() %>%
+
+raw_meds_inpt <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt()
+
+tmp_steroids <- raw_meds_inpt %>%
     filter(med %in% c("dexamethasone", "methylprednisolone", "prednisolone", "prednisone")) %>%
     # tidy_data(ref) %>%
-    semi_join(include, by = "millennium.id")
+    semi_join(include, by = "millennium.id") %>%
+    dmap_at("order.parent.id", ~ na_if(.x, 0)) %>%
+    mutate(order.parent.id = coalesce(order.parent.id, order.id))
 
 data_groups <- tmp_steroids %>%
     mutate(dex = med == "dexamethasone") %>%
@@ -83,7 +88,12 @@ data_asthma <- read_data(dir_raw, "events_asthma_scores", FALSE) %>%
 
 # steroids ---------------------------------------------
 
+tmp_freq <- read_data(dir_raw, "orders-details", FALSE) %>%
+    as.order_detail() %>%
+    distinct(millennium.id, order.id, freq)
+
 data_steroids <- tmp_steroids %>%
+    left_join(tmp_freq, by = c("millennium.id", "order.parent.id" = "order.id")) %>%
     group_by(millennium.id, med) %>%
     arrange(med.datetime) %>%
     summarize(num.doses = n(),
@@ -98,68 +108,71 @@ data_steroids <- tmp_steroids %>%
 # adjunct medications ----------------------------------
 
 tmp_first_steroid <- data_steroids %>%
-    group_by(pie.id) %>%
+    group_by(millennium.id) %>%
     summarize(first.datetime = first(first.datetime))
 
-ref <- tibble(name = c("albuterol", "ipratropium", "albuterol-ipratropium",
-                       "ipratropium nasal", "magnesium sulfate",
-                       "magnesium oxide", "terbutaline"),
-              type = "med",
-              group = "sched")
+# ref <- tibble(name = c("albuterol", "ipratropium", "albuterol-ipratropium",
+#                        "ipratropium nasal", "magnesium sulfate",
+#                        "magnesium oxide", "terbutaline"),
+#               type = "med",
+#               group = "sched")
 
-raw_meds_sched <- read_data(dir_raw, "meds_sched_asthma") %>%
-    as.meds_sched() %>%
-    tidy_data(ref) %>%
-    semi_join(include, by = "pie.id")
+adj_meds <- c("albuterol", "ipratropium", "albuterol-ipratropium",
+              "ipratropium nasal", "magnesium sulfate", "magnesium oxide",
+              "terbutaline")
+
+raw_meds_sched <- raw_meds_inpt %>%
+    filter(med %in% adj_meds) %>%
+    # tidy_data(ref) %>%
+    semi_join(include, by = "millennium.id")
 
 tmp_meds <- raw_meds_sched %>%
-    inner_join(tmp_first_steroid, by = "pie.id") %>%
-    group_by(pie.id, med) %>%
+    inner_join(tmp_first_steroid, by = "millennium.id") %>%
+    group_by(millennium.id, med) %>%
     arrange(med.datetime)
 
 tmp_meds_adjunct <- tmp_meds %>%
     filter(med.datetime > first.datetime) %>%
-    group_by(pie.id, med, med.dose.units) %>%
+    group_by(millennium.id, med, med.dose.units) %>%
     summarize(total.dose.after = sum(med.dose))
 
 data_meds_adjunct <- tmp_meds %>%
-    group_by(pie.id, med, med.dose.units) %>%
+    group_by(millennium.id, med, med.dose.units) %>%
     summarize(total.dose = sum(med.dose)) %>%
-    full_join(tmp_meds_adjunct, by = c("pie.id", "med", "med.dose.units"))
+    full_join(tmp_meds_adjunct, by = c("millennium.id", "med", "med.dose.units"))
 
-ref_cont <- tibble(name = "albuterol", type = "med", group = "cont")
+# ref_cont <- tibble(name = "albuterol", type = "med", group = "cont")
 
-raw_albuterol_cont <- read_data(dir_raw, "meds_cont_asthma") %>%
-    as.meds_cont() %>%
-    tidy_data(ref_cont, raw_meds_sched) %>%
-    semi_join(include, by = "pie.id")
+raw_albuterol_cont <- raw_meds_inpt %>%
+    filter(!is.na(event.tag),
+           med == "albuterol") %>%
+    # tidy_data(ref_cont, raw_meds_sched) %>%
+    semi_join(include, by = "millennium.id")
 
 # concat_encounters(tmp.meds.cont$order.id, 900)
 
-tmp_albuterol_dc <- read_data(dir_raw, "order_detail") %>%
-    as.order_detail() %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(action.type == "Discontinue",
-           ingredient == "albuterol") %>%
-    distinct(pie.id, order.id, action.datetime) %>%
+tmp_albuterol_dc <- read_data(dir_raw, "orders-actions", FALSE) %>%
+    as.order_action() %>%
+    semi_join(include, by = "millennium.id") %>%
+    filter(action.type == "Discontinue") %>%
+    distinct(millennium.id, order.id, action.datetime) %>%
     rename(dc.datetime = action.datetime)
 
-tmp_albuterol_order <- read_data(dir_raw, "order_detail") %>%
+tmp_albuterol_order <- read_data(dir_raw, "orders-edw-detail") %>%
     as.order_detail() %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(action.type == "Order",
-           ingredient == "albuterol") %>%
+    filter(ingredient == "albuterol",
+           action.type == "Order") %>%
     dmap_at("ingredient.dose", as.numeric)
 
 tmp_albuterol_cont <- raw_albuterol_cont %>%
     filter(str_detect(event.tag, "Begin Bag")) %>%
-    full_join(tmp_albuterol_order, by = c("pie.id", "order.id")) %>%
-    full_join(tmp_albuterol_dc, by = c("pie.id", "order.id")) %>%
-    select(pie.id:med, route, event.tag, ingredient.dose, ingredient.unit,
+    full_join(tmp_albuterol_order, by = "order.id") %>%
+    full_join(tmp_albuterol_dc, by = c("millennium.id", "order.id")) %>%
+    select(millennium.id:med, route, event.tag, ingredient.dose, ingredient.unit,
            dc.datetime) %>%
-    inner_join(tmp_first_steroid, by = "pie.id") %>%
-    distinct(pie.id, order.id, .keep_all = TRUE) %>%
-    group_by(pie.id) %>%
+    inner_join(tmp_first_steroid, by = "millennium.id") %>%
+    distinct(millennium.id, order.id, .keep_all = TRUE) %>%
+    group_by(millennium.id) %>%
     mutate(dc.datetime = coalesce(dc.datetime, lead(med.datetime)),
            after.steroid = dc.datetime > first.datetime,
            overlap = first.datetime %within% interval(med.datetime, dc.datetime),
@@ -184,12 +197,12 @@ tmp_albuterol_cont <- raw_albuterol_cont %>%
            duration.after = if_else(duration.after < 0, 0, duration.after),
            dose.before = rate * duration.before,
            dose.after = rate * duration.after) %>%
-    group_by(pie.id, med, ingredient.unit) %>%
+    group_by(millennium.id, med, ingredient.unit) %>%
     summarize(total.dose = sum(dose.before) + sum(dose.after),
               total.dose.after = sum(dose.after)) %>%
     mutate(total.dose = coalesce(total.dose, 0),
            total.dose.after = coalesce(total.dose.after, 0)) %>%
-    select(pie.id, med, med.dose.units = ingredient.unit, total.dose, total.dose.after) %>%
+    select(millennium.id, med, med.dose.units = ingredient.unit, total.dose, total.dose.after) %>%
     filter(total.dose > 0)
 
 data_meds_adjunct <- bind_rows(data_meds_adjunct, tmp_albuterol_cont) %>%
@@ -203,7 +216,7 @@ raw_encounters <- read_data(dir_raw, "encounters") %>%
 tmp_index <- raw_encounters%>%
     group_by(person.id) %>%
     arrange(admit.datetime) %>%
-    left_join(data_demographics[c("pie.id", "age")], by = "pie.id") %>%
+    left_join(data_demographics[c("millennium.id", "age")], by = "millennium.id") %>%
     filter(!is.na(age)) %>%
     select(person.id, index.datetime = admit.datetime)
 
@@ -216,51 +229,54 @@ tmp_readmit <- raw_encounters %>%
                                    units = "days")) %>%
     summarize(readmit.days = min(readmit.days))
 
-data_readmit <- left_join(data_demographics[c("pie.id", "person.id")],
-                          tmp_readmit[c("person.id", "readmit.days")],
-                          by = "person.id") %>%
+raw_id <- read_data(dir_raw, "identifiers") %>%
+    as.id()
+
+data_readmit <- data_demographics %>%
+    left_join(raw_id, by = "millennium.id") %>%
+    left_join(tmp_readmit, by = "person.id") %>%
     mutate(readmit.30days = if_else(readmit.days <= 30, TRUE, FALSE, FALSE),
            readmit.7days = if_else(readmit.days <= 7, TRUE, FALSE, FALSE)) %>%
-    select(-readmit.days, -person.id)
+    select(millennium.id, readmit.days:readmit.7days)
 
 # icu admission ----
 
-raw_locations <- read_data(dir_raw, "locations") %>%
+raw_locations <- read_data(dir_raw, "location", FALSE) %>%
     as.locations() %>%
     tidy_data() %>%
-    semi_join(include, by = "pie.id") %>%
-    filter(location == "Hermann 9 Pediatric Intensive Care Unit") %>%
-    distinct(pie.id, .keep_all = TRUE)
+    semi_join(include, by = "millennium.id") %>%
+    filter(location == "HC PICU") %>%
+    distinct(millennium.id, .keep_all = TRUE)
 
-data_picu <- left_join(data_demographics["pie.id"],
-                       raw_locations[c("pie.id", "location")],
-                       by = "pie.id") %>%
+data_picu <- left_join(data_demographics["millennium.id"],
+                       raw_locations[c("millennium.id", "location")],
+                       by = "millennium.id") %>%
     mutate(picu.admit = ifelse(!is.na(location), TRUE, FALSE)) %>%
     select(-location)
 
 # vomiting ---------------------------------------------
 
-raw_emesis <- read_data(dir_raw, "vomit") %>%
+raw_emesis <- read_data(dir_raw, "output-emesis") %>%
     as.events() %>%
-    semi_join(include, by = "pie.id") %>%
-    inner_join(data_steroids[c("pie.id", "first.datetime", "last.datetime")],
-               by = "pie.id") %>%
+    left_join(raw_id, by = "pie.id") %>%
+    semi_join(include, by = "millennium.id") %>%
+    inner_join(data_steroids[c("millennium.id", "first.datetime", "last.datetime")],
+               by = "millennium.id") %>%
     mutate(event.result = as.numeric(event.result)) %>%
     filter(event.result > 0,
            event.datetime > first.datetime,
            event.datetime < last.datetime + hours(24)) %>%
-    distinct(pie.id, .keep_all = TRUE)
+    distinct(millennium.id, .keep_all = TRUE)
 
-data_emesis <- left_join(data_demographics["pie.id"],
-                         raw_emesis[c("pie.id", "event.result")],
-                         by = "pie.id") %>%
+data_emesis <- left_join(data_demographics["millennium.id"],
+                         raw_emesis[c("millennium.id", "event.result")],
+                         by = "millennium.id") %>%
     mutate(emesis = ifelse(!is.na(event.result), TRUE, FALSE)) %>%
     select(-event.result)
 
 # identifiers ------------------------------------------
 
-data_identifiers <- read_data(dir_raw, "identifiers") %>%
-    as.id() %>%
-    semi_join(include, by = "pie.id")
+data_identifiers <- raw_id %>%
+    semi_join(include, by = "millennium.id")
 
 dirr::save_rds("data/tidy", "data_")
