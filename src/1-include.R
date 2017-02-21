@@ -88,6 +88,7 @@ edw_person <- concat_encounters(raw_person$person.id)
 
 # step 5 -----------------------------------------------
 # get order actions to use for continuous albuterol discontinue time
+# get order details from EDW for albuterol dose
 
 raw_meds_inpt <- read_data(dir_raw, "meds-inpt", FALSE) %>%
     as.meds_inpt()
@@ -101,6 +102,11 @@ mbo_order <- concat_encounters(raw_albuterol$order.id)
 
 # run the MBO query:
 #   * Orders - Actions - by Order Id
+
+# run the EDW query:
+#   * Orders - from Clinical Event Id - Prompt
+
+# get steroid order details for frequency
 
 raw_steroids <- raw_meds_inpt %>%
     filter(med %in% c("dexamethasone", "methylprednisolone", "prednisolone", "prednisone")) %>%
