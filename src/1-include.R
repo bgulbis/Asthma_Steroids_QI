@@ -4,69 +4,70 @@ library(tidyverse)
 library(lubridate)
 library(edwr)
 
-dir_raw <- "data/raw/mbo"
+dir_raw <- "data/raw/megan"
 
 # step 1 -----------------------------------------------
 # run MBO query:
-#   * Patients - By Medication (Generic)
-#       - Medication (Generic): dexamethasone, methylprednisOLONE, predniSONE, prednisoLONE
+#   * Patients - By Medication (Generic) - Administration Date
+#       - Medication (Generic): albuterol
 #       - Facility (Curr): HC Children's
 #       - Date Only - Admit
 
 # filter data
-raw_patients <- read_data(dir_raw, "patients") %>%
-    as.patients(FALSE, tzone = "UTC") %>%
-    filter(age >= 4, age <= 17,
-           visit.type != "Outpatient", visit.type != "Emergency",
-           discharge.datetime <= mdy_hms("09/30/2016 23:59:59", tz = "US/Central"))
+raw_patients <- read_data(dir_raw, "patients", FALSE) %>%
+    as.patients() %>%
+    filter(age <= 17,
+           visit.type != "Outpatient",
+           visit.type != "Emergency",
+           discharge.datetime <= mdy("12/31/2017", tz = "US/Central"))
 
-# edw_pie <- concat_encounters(raw_patients$pie.id)
 mbo_pie <- concat_encounters(raw_patients$millennium.id)
 
 # step 2 -----------------------------------------------
-# screen for diagnosis codes of acute asthma exacerbation
+# limit to patients receiving albuterol between desired date ranges
 
-# run the following queries:
-#   * Diagnosis Codes (ICD-9/10-CM) - All
+# run MBO query
+#   * Medications - Inpatient - All
 
-ref_icd9 <- c("493.92", "493.02", "493.12", "493.22", "493.01", "493.11",
-              "493.21", "493.91")
+raw_meds <- read_data(dir_raw, "meds-inpt", FALSE) %>%
+    as.meds_inpt()
 
-ref_icd10 <- c("J45.901", "J45.21", "J45.31", "J45.41", "J45.51", "J45.22",
-               "J45.32", "J45.42", "J45.52", "J45.902")
+meds_albuterol <- raw_meds %>%
+    filter(med == "albuterol",
+           (med.datetime >= mdy("9/22/2016", tz = "US/Central") &
+                med.datetime <= mdy("10/19/2016", tz = "US/Central")) |
+               (med.datetime >= mdy("9/22/2017", tz = "US/Central") &
+                    med.datetime <= mdy("10/19/2017", tz = "US/Central")))
 
-eligible_pie <- read_data(dir_raw, "diagnosis") %>%
-    as.diagnosis() %>%
-    filter((diag.code %in% ref_icd9 & code.source == "ICD-9-CM") |
-               (diag.code %in% ref_icd10 & code.source == "ICD-10-CM")) %>%
-    distinct(pie.id)
-
-edw_eligible <- concat_encounters(eligible_pie$pie.id)
-
-write_rds(eligible_pie, "data/final/eligible.Rds", compress = "gz")
+mbo_alb <- concat_encounters(unique(meds_albuterol$millennium.id))
 
 # step 3 -----------------------------------------------
-# run the following queries:
-#   * Clinical Events - Prompt
-#       - RC Acc Muscle Pre Asthma Assess; RC Air Exch Pre Asthma Assess; RC Pre Asthma Assess Total; RC Resp Rate Pre Asthma Assess; RC Rm Air O2 Sat Pre Asthma Assess; RC Wheezes Pre Asthma Assess; Asthma Treatment Recommended; RC Asthma Treatment Recommended; RC Air Exch Post Asthma Assess; RC Resp Rate Post Asthma Assess; RC Rm Air O2 Sat Post Asthma Assess; RC Acc Muscle Post Asthma Assess; RC Post Asthma Assess Total; RC Wheezes Post Asthma Assess
+# run the following MBO queries:
 #   * Demographics
-#   * Identifiers - by PowerInsight Encounter Id
-#   * Labs - Pregnancy
-#   * Location History
-#   * Measures (Height and Weight)
-#   * Medications - Inpatient Continuous - All
-#   * Medications - Inpatient Continuous - Prompt
-#       - Clinical Event: albuterol
-#   * Medications - Inpatient Intermittent - Prompt
-#       - Clinical Event: racepinephrine
-#   * Medications - Inpatient Intermittent with Frequency - Prompt
-#       - Clinical Event: dexamethasone, predniSONE, prednisoLONE
-#   * Vomiting Output
+#   * Diagnosis Codes (ICD-9/10-CM) - All
+#   * Measures
+#   * Vitals - BP
 
-raw_demographics <- read_data(dir_raw, "demographics") %>%
+# find ashtma patients; ICD 10 = J45.*
+
+diag_asthma <- read_data(dir_raw, "diagnosis", FALSE) %>%
+    as.diagnosis() %>%
+    filter(diag.type == "FINAL",
+           str_detect(diag.code, "J45"))
+
+pts_asthma <- raw_patients %>%
+    semi_join(diag_asthma, by = "millennium.id") %>%
+    mutate(group = year(discharge.datetime)) %>%
+    select(millennium.id, group)
+
+raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics()
 
-edw_person <- concat_encounters(raw_demographics$person.id)
+raw_measures <- read_data(dir_raw, "measures", FALSE) %>%
+    as.events(order_var = FALSE)
+
+pts_all <- raw_demographics %>%
+    left_join(pts_asthma, by = "millennium.id")
 
 # step 4 -----------------------------------------------
 # run the following queries:
