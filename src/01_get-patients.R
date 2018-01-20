@@ -1,10 +1,8 @@
-# include
-
 library(tidyverse)
 library(lubridate)
 library(edwr)
 
-dir_raw <- "data/raw/megan"
+dir_raw <- "I:/Projects/Asthma_Steroids_QI/data/raw/megan"
 
 # step 1 -----------------------------------------------
 # run MBO query:
@@ -190,7 +188,7 @@ measures <- raw_measures %>%
 
 data_demographics <- pts_all %>%
     semi_join(meds_albuterol, by = "millennium.id") %>%
-    left_join(pts_asthma, by = "millennium.id") %>%
+    # left_join(pts_asthma, by = "millennium.id") %>%
     mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
@@ -210,13 +208,21 @@ write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
 write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
 
 
-# x <- function(df, ...) {
-#     id <- "millennium.id"
-#     x <- quos(!!id, "med")
-#
-#     df %>%
-#         add_count(!!!x)
-# }
+fx <- function(df, ...) {
+    id <- quo(millennium.id)
+    # z <- "millennium.id"
+    # y <- enquo(z)
+    # print(y)
+    # y <- quo(!!id)
+
+    x <- quos(!!id, !!quo(med))
+
+    df %>%
+        # add_count(!!!x) %>%
+        group_by(!!!x) %>%
+        summarize(!!! list(first.datetime = quo(first(med.datetime))))
+        # add_count(!!!x)
+}
 #
 # y <- x(meds_albuterol_mdi_run)
 #
@@ -224,3 +230,11 @@ write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FA
 #     # group_by(millennium.id) %>%
 #     add_count(millennium.id)
 #
+
+id <- !!"millennium.id"
+quo(!!id)
+
+fx(meds_albuterol_mdi)
+
+meds_albuterol_mdi %>%
+    count(quo(id))
