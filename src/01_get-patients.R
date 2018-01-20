@@ -64,8 +64,10 @@ diag_asthma <- read_data(dir_raw, "diagnosis", FALSE) %>%
 
 pts_asthma <- raw_patients %>%
     semi_join(diag_asthma, by = "millennium.id") %>%
-    mutate(group = year(discharge.datetime)) %>%
-    select(millennium.id, group)
+    mutate(asthma = TRUE) %>%
+    select(millennium.id, asthma)
+    # mutate(group = year(discharge.datetime)) %>%
+    # select(millennium.id, group)
 
 raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
     as.demographics()
@@ -79,7 +81,7 @@ raw_vitals <- read_data(dir_raw, "vitals", FALSE) %>%
 pts_all <- raw_demographics %>%
     left_join(pts_asthma, by = "millennium.id")
 
-# step 4 -----------------------------------------------
+# orders -----------------------------------------------
 
 raw_orders <- read_data(dir_raw, "orders-details_", FALSE) %>%
     as.order_detail()
@@ -96,12 +98,23 @@ orders <- bind_rows(raw_orders, raw_orders_vol) %>%
     select(millennium.id, order.id, order.datetime, freq, prn) %>%
     distinct()
 
+# albuterol --------------------------------------------
 meds <- meds_albuterol %>%
     left_join(orders, by = c("millennium.id", "orig.order.id" = "order.id"))
 
 meds_albuterol_cont <- meds %>%
-    filter(is.na(order.datetime))
+    filter(!is.na(event.tag) | med.dose.units == "microgram")
+    # filter(is.na(order.datetime))
     # filter(!is.na(event.tag) | route == "IV")
+
+meds_albuterol_cont_run <- meds_albuterol %>%
+    filter(!is.na(event.tag) | med.dose.units == "microgram") %>%
+    mutate_at("med.rate", funs(na_if(., 0L))) %>%
+    mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
+    mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
+    calc_runtime()
+
+meds_albuterol_cont_dosing <- summarize_data(meds_albuterol_cont_run)
 
 mbo_cont <- concat_encounters(unique(meds_albuterol_cont$orig.order.id), 1000)
 
@@ -116,25 +129,98 @@ raw_orders_cont <- read_data(dir_raw, "orders-details-cont", FALSE) %>%
 # run MBO query
 #   * Orders Meds - Details - by Order Id, Cont
 
-meds_albuterol_mdi <- meds %>%
-    filter(med.dose.units == "puff")
+meds_albuterol_mdi_run <- meds_albuterol %>%
+    filter(med.dose.units == "puff") %>%
+    calc_runtime(cont = FALSE) %>%
+    mutate(orig.order.id = if_else(order.parent.id == 0, order.id, order.parent.id)) %>%
+    left_join(orders, by = c("millennium.id", "orig.order.id" = "order.id"))
+
+meds_albuterol_mdi_dosing <- summarize_data(meds_albuterol_mdi_run, cont = FALSE)
+
+meds_albuterol_neb_run <- meds_albuterol %>%
+    filter(is.na(event.tag),
+           med.dose.units != "microgram",
+           med.dose.units != "puff") %>%
+    calc_runtime(cont = FALSE) %>%
+    mutate(orig.order.id = if_else(order.parent.id == 0, order.id, order.parent.id)) %>%
+    left_join(orders, by = c("millennium.id", "orig.order.id" = "order.id"))
+
+meds_albuterol_neb_dosing <- summarize_data(meds_albuterol_neb_run, cont = FALSE)
+
+# other ---------------------------------------------
+
+meds_steroids_run <- raw_meds %>%
+    filter(med %in% c("prednisone", "prednisolone", "methylprednisolone", "dexamethasone")) %>%
+    calc_runtime(cont = FALSE)
+
+meds_steroids_dosing <- summarize_data(meds_steroids_run, cont = FALSE)
+
+meds_mag <- raw_meds %>%
+    filter(str_detect(med, "magnesium"),
+           route %in% c("IV", "IVPB"))
+
+meds_mag_cont_run <- meds_mag %>%
+    filter(!is.na(event.tag)) %>%
+    mutate_at("med.rate", funs(na_if(., 0L))) %>%
+    mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
+    mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
+    calc_runtime()
+
+meds_mag_cont_dosing <- summarize_data(meds_mag_cont_run)
+
+meds_mag_run <- meds_mag %>%
+    filter(is.na(event.tag)) %>%
+    calc_runtime(cont = FALSE)
+
+meds_mag_dosing <- summarize_data(meds_mag_run, cont = FALSE)
+
+# measures ---------------------------------------------
+
+measures <- raw_measures %>%
+    filter(!is.na(event.result.units)) %>%
+    arrange(millennium.id, event.datetime) %>%
+    group_by(millennium.id, event, event.result.units) %>%
+    mutate_at("event.result", as.numeric) %>%
+    summarize_at("event.result", first) %>%
+    ungroup() %>%
+    select(-event.result.units) %>%
+    spread(event, event.result)
+
+# data sets --------------------------------------------
+
+data_demographics <- pts_all %>%
+    semi_join(meds_albuterol, by = "millennium.id") %>%
+    left_join(pts_asthma, by = "millennium.id") %>%
+    mutate_at("asthma", funs(coalesce(., FALSE))) %>%
+    left_join(measures, by = "millennium.id") %>%
+    select(-disposition, -visit.type, -facility)
+
+write.csv(data_demographics, "data/external/demographics.csv", row.names = FALSE)
+write.csv(meds_albuterol_cont_run, "data/external/albuterol_cont_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_cont_dosing, "data/external/albuterol_cont_summary.csv", row.names = FALSE)
+write.csv(meds_albuterol_mdi_run, "data/external/albuterol_mdi_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_mdi_dosing, "data/external/albuterol_mdi_summary.csv", row.names = FALSE)
+write.csv(meds_albuterol_neb_run, "data/external/albuterol_neb_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_neb_dosing, "data/external/albuterol_neb_summary.csv", row.names = FALSE)
+write.csv(meds_steroids_run, "data/external/steroids_all.csv", row.names = FALSE)
+write.csv(meds_steroids_dosing, "data/external/steroids_summary.csv", row.names = FALSE)
+write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
+write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
+write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
+write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
 
 
-# run the following queries:
-#   * Encounters - by Person ID
-
-# raw_meds_sched <- read_data(dir_raw, "meds_sched") %>%
-#     as.meds_sched()
+# x <- function(df, ...) {
+#     id <- "millennium.id"
+#     x <- quos(!!id, "med")
 #
-# ref <- tibble(name = "albuterol", type = "med", group = "cont")
+#     df %>%
+#         add_count(!!!x)
+# }
 #
-# raw_albuterol <- read_data(dir_raw, "meds_cont_asthma") %>%
-#     as.meds_cont() %>%
-#     tidy_data(ref, raw_meds_sched) %>%
-#     distinct(order.id)
+# y <- x(meds_albuterol_mdi_run)
 #
-# edw_order <- concat_encounters(raw_albuterol$order.id)
-
-# step 5 -----------------------------------------------
-# run the following queries:
-#   * Orders - from Clinical Event Id - Prompt
+# meds_albuterol %>%
+#     # group_by(millennium.id) %>%
+#     add_count(millennium.id)
+#
