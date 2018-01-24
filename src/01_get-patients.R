@@ -195,7 +195,7 @@ measures <- raw_measures %>%
 
 data_demographics <- pts_all %>%
     semi_join(meds_albuterol, by = "millennium.id") %>%
-    left_join(pts_asthma, by = "millennium.id") %>%
+    # left_join(pts_asthma, by = "millennium.id") %>%
     mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
