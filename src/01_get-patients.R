@@ -1,5 +1,3 @@
-# include
-
 library(tidyverse)
 library(lubridate)
 library(edwr)
@@ -79,7 +77,7 @@ raw_vitals <- read_data(dir_raw, "vitals", FALSE) %>%
     as.vitals()
 
 pts_all <- raw_demographics %>%
-    left_join(pts_asthma, by = "millennium.id")
+    semi_join(pts_asthma, by = "millennium.id")
 
 # orders -----------------------------------------------
 
@@ -100,7 +98,8 @@ orders <- bind_rows(raw_orders, raw_orders_vol) %>%
 
 # albuterol --------------------------------------------
 meds <- meds_albuterol %>%
-    left_join(orders, by = c("millennium.id", "orig.order.id" = "order.id"))
+    left_join(orders, by = c("millennium.id", "orig.order.id" = "order.id")) %>%
+    semi_join(pts_asthma, by = "millennium.id")
 
 meds_albuterol_cont <- meds %>%
     filter(!is.na(event.tag) | med.dose.units == "microgram")
@@ -150,23 +149,29 @@ meds_albuterol_neb_dosing <- summarize_data(meds_albuterol_neb_run, cont = FALSE
 # other ---------------------------------------------
 
 meds_steroids_run <- raw_meds %>%
+    semi_join(pts_asthma, by = "millennium.id") %>%
     filter(med %in% c("prednisone", "prednisolone", "methylprednisolone", "dexamethasone")) %>%
     calc_runtime(cont = FALSE)
 
 meds_steroids_dosing <- summarize_data(meds_steroids_run, cont = FALSE)
 
 meds_mag <- raw_meds %>%
+    semi_join(pts_asthma, by = "millennium.id") %>%
     filter(str_detect(med, "magnesium"),
            route %in% c("IV", "IVPB"))
 
-meds_mag_cont_run <- meds_mag %>%
-    filter(!is.na(event.tag)) %>%
-    mutate_at("med.rate", funs(na_if(., 0L))) %>%
-    mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
-    mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
-    calc_runtime()
+meds_mag_cont <- meds_mag %>%
+    filter(!is.na(event.tag))
 
-meds_mag_cont_dosing <- summarize_data(meds_mag_cont_run)
+if (nrow(meds_mag_cont) > 0) {
+    meds_mag_cont_run <- meds_mag_cont %>%
+        mutate_at("med.rate", funs(na_if(., 0L))) %>%
+        mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
+        mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
+        calc_runtime()
+
+    meds_mag_cont_dosing <- summarize_data(meds_mag_cont_run)
+}
 
 meds_mag_run <- meds_mag %>%
     filter(is.na(event.tag)) %>%
@@ -204,23 +209,9 @@ write.csv(meds_albuterol_neb_run, "data/external/albuterol_neb_all.csv", row.nam
 write.csv(meds_albuterol_neb_dosing, "data/external/albuterol_neb_summary.csv", row.names = FALSE)
 write.csv(meds_steroids_run, "data/external/steroids_all.csv", row.names = FALSE)
 write.csv(meds_steroids_dosing, "data/external/steroids_summary.csv", row.names = FALSE)
-write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
-write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
+
+if (exists("meds_mag_cont_run")) write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
+if (exists("meds_mag_cont_dosing")) write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
+
 write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
 write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
-
-
-# x <- function(df, ...) {
-#     id <- "millennium.id"
-#     x <- quos(!!id, "med")
-#
-#     df %>%
-#         add_count(!!!x)
-# }
-#
-# y <- x(meds_albuterol_mdi_run)
-#
-# meds_albuterol %>%
-#     # group_by(millennium.id) %>%
-#     add_count(millennium.id)
-#
