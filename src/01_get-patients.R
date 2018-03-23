@@ -122,8 +122,7 @@ raw_orders_cont <- read_data(dir_raw, "orders-details-cont", FALSE) %>%
            `Order Strength Dose Unit` = `Order Volume Dose Unit`) %>%
     mutate(Frequency = NA_character_,
            `PRN Indicator` = NA_character_) %>%
-    as.order_detail(extras = list(clinical.display = "`Complete Clinical Display Line`"))
-
+    as.order_detail(extras = list(clinical.display = "Complete Clinical Display Line"))
 
 # run MBO query
 #   * Orders Meds - Details - by Order Id, Cont
@@ -193,9 +192,15 @@ measures <- raw_measures %>%
 
 # data sets --------------------------------------------
 
+group <- meds_albuterol %>%
+    # mutate(year = floor_date(med.datetime, "year")) %>%
+    mutate(year = year(med.datetime)) %>%
+    distinct(millennium.id, year)
+
 data_demographics <- pts_all %>%
     semi_join(meds_albuterol, by = "millennium.id") %>%
-    # left_join(pts_asthma, by = "millennium.id") %>%
+    left_join(group, by = "millennium.id") %>%
+    left_join(pts_asthma, by = "millennium.id") %>%
     mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
