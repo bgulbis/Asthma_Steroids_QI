@@ -76,6 +76,9 @@ raw_measures <- read_data(dir_raw, "measures", FALSE) %>%
 raw_vitals <- read_data(dir_raw, "vitals", FALSE) %>%
     as.vitals()
 
+sbp <- raw_vitals %>%
+    filter(str_detect(vital, "systolic"))
+
 pts_all <- raw_demographics %>%
     semi_join(pts_asthma, by = "millennium.id")
 
@@ -178,6 +181,13 @@ meds_mag_run <- meds_mag %>%
 
 meds_mag_dosing <- summarize_data(meds_mag_run, cont = FALSE)
 
+bp_mag <- meds_mag %>%
+    left_join(sbp, by = "millennium.id") %>%
+    filter(
+        difftime(med.datetime, vital.datetime, units = "hours") > 0,
+        difftime(med.datetime, vital.datetime, units = "hours") <= 1
+    )
+
 # measures ---------------------------------------------
 
 measures <- raw_measures %>%
@@ -220,3 +230,4 @@ if (exists("meds_mag_cont_dosing")) write.csv(meds_mag_cont_dosing, "data/extern
 
 write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
 write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
+write.csv(bp_mag, "data/external/bp_magnesium.csv", row.names = FALSE)
