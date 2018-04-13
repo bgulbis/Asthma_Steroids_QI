@@ -1,0 +1,163 @@
+---
+title: "Albuterol MUE"
+author: "Megan Moore, Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(kableExtra)
+
+x <- dirr::get_rds("../data/tidy/megan")
+```
+
+Note, the assumption in Table 1 is that patients who only had one value charted as Begin Bag received the entire bag, so the duration is presumed to be 8.7 hours
+
+```{r}
+data_med_cont_durations %>%
+    ungroup() %>%
+    add_count(year, rate.text) %>%
+    group_by(year, rate.text, n) %>%
+    mutate_at("duration", as.numeric) %>%
+    summarize_at(
+        "duration",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+    knitr::kable(
+        digits = 1,
+        caption = "Duration of continuous albuterol, in hours, separated by rate for 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Rate",
+            "N",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    )
+
+```
+
+Note, doses / route / frequency combinations with two or fewer patients are not displayed in Table 2.
+
+```{r}
+data_med_intermit_duration %>%
+    ungroup() %>%
+    add_count(year, med.dose, med.dose.units, alt.freq) %>%
+    filter(n > 2) %>%
+    group_by(year, med.dose, med.dose.units, alt.freq, n) %>%
+    summarize_at(
+        "duration",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+    knitr::kable(
+        digits = 1,
+        caption = "Duration of intermittent albuterol, in hours, separated by dose, route, and frequency in 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Dose",
+            "Units",
+            "Interval in Hours",
+            "N",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    ) 
+
+```
+
+```{r}
+data_med_intermit_start_any %>%
+    group_by(year) %>%
+    mutate_at("time.intermit", as.numeric) %>%
+    summarize_at(
+        "time.intermit",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+        knitr::kable(
+        digits = 1,
+        caption = "Time from continuous albuterol initiation until scheduled intermittent initiation, at any frequency, in 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    ) 
+```
+
+It seems most patients are started on an interval other than Q4H first.
+
+```{r}
+data_med_intermit_start %>%
+    group_by(year) %>%
+    mutate_at("time.intermit", as.numeric) %>%
+    summarize_at(
+        "time.intermit",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+        knitr::kable(
+        digits = 1,
+        caption = "Time from continuous albuterol initiation until scheduled Q4H intermittent initiation in 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    ) 
+```
+
+```{r}
+data_med_cont_intermit %>%
+    distinct(millennium.id, year) %>%
+    ungroup() %>%
+    count(year) %>%
+    knitr::kable(
+        caption = "Number of patients on 10 mg/hr continuous albuterol who also received simultaneous 10 puffs Q2H scheduled. Note, there were no patients receiving Q4H scheduled.",
+        col.names = c("Year", "N")
+    )
+```
+
