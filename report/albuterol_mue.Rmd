@@ -213,3 +213,35 @@ data_albut_total %>%
     )
 ```
 
+```{r}
+data_albut_total %>%
+    left_join(
+        data_demographics[c("millennium.id", "weight")],
+        by = "millennium.id"
+    ) %>%
+    mutate(cum.dose.kg = cum.dose / weight) %>%
+    group_by(year) %>%
+    summarize_at(
+        "cum.dose.kg",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+    knitr::kable(
+        digits = 1,
+        caption = "Cumulative albuterol dose (in mg/kg) from time of continuous initiation until scheduled q4 hour dosing initiated for 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    )
+```
