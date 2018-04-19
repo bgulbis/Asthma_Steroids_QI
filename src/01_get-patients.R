@@ -209,7 +209,7 @@ meds_albuterol_neb_dosing <- meds_albuterol_neb_run %>%
 
 # other ---------------------------------------------
 
-meds_steroids_run <- raw_meds %>%
+data_meds_steroids_run <- raw_meds %>%
     semi_join(pts_asthma, by = "millennium.id") %>%
     filter(
         med %in% c(
@@ -221,7 +221,7 @@ meds_steroids_run <- raw_meds %>%
     ) %>%
     calc_runtime(cont = FALSE)
 
-meds_steroids_dosing <- meds_steroids_run %>%
+data_meds_steroids_dosing <- data_meds_steroids_run %>%
     summarize_data(cont = FALSE)
 
 meds_mag <- raw_meds %>%
