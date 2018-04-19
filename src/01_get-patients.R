@@ -500,6 +500,63 @@ data_med_intermit_duration <- meds_albuterol %>%
         )
     )
 
+cont_to_q4 <- med_rate %>%
+    ungroup() %>%
+    mutate(med.rate = rate.text) %>%
+    left_join(
+        data_med_intermit_start %>%
+            rename(q4.start = med.datetime),
+        by = "millennium.id"
+    ) %>%
+    filter(
+        med.datetime >= cont.start,
+        med.datetime <= q4.start
+    ) %>%
+    calc_runtime() %>%
+    mutate_at(
+        c("duration", "run.time"),
+        na_if,
+        y = 0
+    ) %>%
+    mutate_at(
+        c("duration", "run.time"),
+        funs(coalesce(., 8.7))
+    ) %>%
+    summarize_data()
+
+intermit_to_q4 <- meds_albuterol %>%
+    filter(is.na(event.tag)) %>%
+    # semi_join(data_demographics, by = "millennium.id") %>%
+    semi_join(med_rate, by = "millennium.id") %>%
+    left_join(
+        data_med_intermit_start %>%
+            rename(q4.start = med.datetime),
+        by = "millennium.id"
+    ) %>%
+    filter(
+        med.datetime >= cont.start,
+        med.datetime <= q4.start
+    ) %>%
+    mutate(
+        cum.dose = if_else(
+            med.dose.units == "puff",
+            med.dose * 0.09,
+            med.dose
+        )
+    ) %>%
+    group_by(millennium.id) %>%
+    summarize_at("cum.dose", sum, na.rm = TRUE)
+
+data_albut_total <- cont_to_q4 %>%
+    select(millennium.id, cum.dose) %>%
+    bind_rows(intermit_to_q4) %>%
+    group_by(millennium.id) %>%
+    summarize_at("cum.dose", sum, na.rm = TRUE) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    )
+
 dirr::save_rds("data/tidy/megan", "data_")
 
 # df <- data_med_cont_durations %>%

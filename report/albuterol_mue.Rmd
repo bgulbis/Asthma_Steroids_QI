@@ -162,17 +162,7 @@ data_med_cont_intermit %>%
     )
 ```
 
-```{r}
-data_meds_steroids_dosing %>%
-    mutate(duration.hours = duration / 24) %>%
-    ggplot(aes(x = med, y = duration.hours)) +
-    geom_boxplot() +
-    xlab(NULL) +
-    ylab("Duration (days)") +
-    theme_bg()
-```
-
-```{r}
+```{r, fig.cap="Duration of steroid use. Methylprednisolone, prednisolone, and prednisone are combined and the total duration is displayed. Patients who received both dexamethsone and one of the other steroids are excluded, as are patients who only received one dose of any steroid."}
 data_meds_steroids_dosing %>%
     mutate(
         steroid = case_when(
@@ -192,6 +182,34 @@ data_meds_steroids_dosing %>%
     ylab("Duration (days)") +
     theme_bg()
 
-ggsave("../figs/steroid_duration.png", device = "png")
+# ggsave("../figs/steroid_duration.png", device = "png")
+```
+
+```{r}
+data_albut_total %>%
+    group_by(year) %>%
+    summarize_at(
+        "cum.dose",
+        funs(
+            mean,
+            sd,
+            median,
+            q25 = quantile(., 0.25),
+            q75 = quantile(., 0.75)
+        ),
+        na.rm = TRUE
+    ) %>%
+    knitr::kable(
+        digits = 1,
+        caption = "Cumulative albuterol dose (in mg) from time of continuous initiation until scheduled q4 hour dosing initiated for 2016 compared with 2017",
+        col.names = c(
+            "Year",
+            "Mean",
+            "SD",
+            "Median",
+            "25th",
+            "75th"
+        )
+    )
 ```
 
