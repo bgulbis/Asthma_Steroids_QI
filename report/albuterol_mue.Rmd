@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE)
 ```{r}
 library(tidyverse)
 library(kableExtra)
+library(themebg)
 
 x <- dirr::get_rds("../data/tidy/megan")
 ```
@@ -159,5 +160,38 @@ data_med_cont_intermit %>%
         caption = "Number of patients on 10 mg/hr continuous albuterol who also received simultaneous 10 puffs Q2H scheduled. Note, there were no patients receiving Q4H scheduled.",
         col.names = c("Year", "N")
     )
+```
+
+```{r}
+data_meds_steroids_dosing %>%
+    mutate(duration.hours = duration / 24) %>%
+    ggplot(aes(x = med, y = duration.hours)) +
+    geom_boxplot() +
+    xlab(NULL) +
+    ylab("Duration (days)") +
+    theme_bg()
+```
+
+```{r}
+data_meds_steroids_dosing %>%
+    mutate(
+        steroid = case_when(
+            med == "dexamethasone" ~ "dexamethasone",
+            TRUE ~ "methyl/prednisone"
+        )
+    ) %>%
+    group_by(millennium.id, steroid) %>%
+    summarize_at("duration", sum, na.rm = TRUE) %>%
+    mutate(duration.hours = duration / 24) %>%
+    filter(duration.hours > 0) %>%
+    add_count(millennium.id) %>%
+    filter(n == 1) %>%
+    ggplot(aes(x = steroid, y = duration.hours)) +
+    geom_boxplot() +
+    xlab(NULL) +
+    ylab("Duration (days)") +
+    theme_bg()
+
+ggsave("../figs/steroid_duration.png", device = "png")
 ```
 
