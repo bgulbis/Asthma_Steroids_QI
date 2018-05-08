@@ -5,6 +5,8 @@ library(edwr)
 dir_raw <- "data/raw/megan"
 tzone <- "US/Central"
 
+dirr::gzip_files(dir_raw)
+
 # step 1 -----------------------------------------------
 # run MBO query:
 #   * Patients - By Medication (Generic) - Administration Date
@@ -60,6 +62,8 @@ mbo_order <- concat_encounters(meds_albuterol$orig.order.id, 1000)
 # run the following MBO queries using mbo_alb
 #   * Demographics
 #   * Diagnosis Codes (ICD-9/10-CM) - All
+#   * Identifiers - by Millennium Encounter Id
+#   * Location History
 #   * Measures
 #   * Vitals - BP
 
@@ -84,7 +88,8 @@ pts_asthma <- raw_patients %>%
     # select(millennium.id, group)
 
 raw_demographics <- read_data(dir_raw, "demographics", FALSE) %>%
-    as.demographics()
+    as.demographics(extras = list("age.days" = "Age- Days (At Admit)")) %>%
+    mutate_at("age.days", as.numeric)
 
 raw_measures <- read_data(dir_raw, "measures", FALSE) %>%
     as.events(order_var = FALSE)
@@ -258,6 +263,22 @@ bp_mag <- meds_mag %>%
         difftime(med.datetime, vital.datetime, units = "hours") <= 1
     )
 
+# allergy meds -----------------------------------------
+
+allergy <- raw_meds %>%
+    semi_join(pts_all, by = "millennium.id") %>%
+    filter(
+        med %in% c(
+            "montelukast",
+            "cetirizine",
+            "diphenhydramine",
+            "loratidine",
+            "levocetirizine",
+            "fluticasone",
+            "mometasone"
+        )
+    )
+
 # measures ---------------------------------------------
 
 measures <- raw_measures %>%
@@ -270,7 +291,31 @@ measures <- raw_measures %>%
     select(-event.result.units) %>%
     spread(event, event.result)
 
+# locations --------------------------------------------
+
+locations <- read_data(dir_raw, "locations", FALSE) %>%
+    as.locations() %>%
+    tidy_data() %>%
+    semi_join(pts_all, by = "millennium.id")
+
+# vent -------------------------------------------------
+
+vent <- read_data(dir_raw, "vent", FALSE) %>%
+    as.events() %>%
+    select(millennium.id:event.result, event.location) %>%
+    arrange(millennium.id, event.datetime) %>%
+    semi_join(pts_all, by = "millennium.id") %>%
+    distinct(
+        millennium.id,
+        event,
+        event.result,
+        .keep_all = TRUE
+    )
+
 # data sets --------------------------------------------
+
+id <- read_data(dir_raw, "identifiers", FALSE) %>%
+    as.id()
 
 group <- meds_albuterol %>%
     # mutate(year = floor_date(med.datetime, "year")) %>%
@@ -279,28 +324,33 @@ group <- meds_albuterol %>%
 
 data_demographics <- pts_all %>%
     semi_join(meds_albuterol, by = "millennium.id") %>%
+    left_join(id, by = "millennium.id") %>%
     left_join(group, by = "millennium.id") %>%
     left_join(pts_asthma, by = "millennium.id") %>%
     mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
 
-# write.csv(data_demographics, "data/external/demographics.csv", row.names = FALSE)
-# write.csv(meds_albuterol_cont_run, "data/external/albuterol_cont_all.csv", row.names = FALSE)
-# write.csv(meds_albuterol_cont_dosing, "data/external/albuterol_cont_summary.csv", row.names = FALSE)
-# write.csv(meds_albuterol_mdi_run, "data/external/albuterol_mdi_all.csv", row.names = FALSE)
-# write.csv(meds_albuterol_mdi_dosing, "data/external/albuterol_mdi_summary.csv", row.names = FALSE)
-# write.csv(meds_albuterol_neb_run, "data/external/albuterol_neb_all.csv", row.names = FALSE)
-# write.csv(meds_albuterol_neb_dosing, "data/external/albuterol_neb_summary.csv", row.names = FALSE)
-# write.csv(meds_steroids_run, "data/external/steroids_all.csv", row.names = FALSE)
-# write.csv(meds_steroids_dosing, "data/external/steroids_summary.csv", row.names = FALSE)
-#
-# if (exists("meds_mag_cont_run")) write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
-# if (exists("meds_mag_cont_dosing")) write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
-#
-# write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
-# write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
-# write.csv(bp_mag, "data/external/bp_magnesium.csv", row.names = FALSE)
+write.csv(data_demographics, "data/external/demographics.csv", row.names = FALSE)
+write.csv(meds_albuterol_cont_run, "data/external/albuterol_cont_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_cont_dosing, "data/external/albuterol_cont_summary.csv", row.names = FALSE)
+write.csv(meds_albuterol_mdi_run, "data/external/albuterol_mdi_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_mdi_dosing, "data/external/albuterol_mdi_summary.csv", row.names = FALSE)
+write.csv(meds_albuterol_neb_run, "data/external/albuterol_neb_all.csv", row.names = FALSE)
+write.csv(meds_albuterol_neb_dosing, "data/external/albuterol_neb_summary.csv", row.names = FALSE)
+write.csv(data_meds_steroids_run, "data/external/steroids_all.csv", row.names = FALSE)
+write.csv(data_meds_steroids_dosing, "data/external/steroids_summary.csv", row.names = FALSE)
+
+if (exists("meds_mag_cont_run")) write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
+if (exists("meds_mag_cont_dosing")) write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
+
+write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
+write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
+write.csv(bp_mag, "data/external/bp_magnesium.csv", row.names = FALSE)
+
+write.csv(locations, "data/external/locations.csv", row.names = FALSE)
+write.csv(vent, "data/external/vent.csv", row.names = FALSE)
+write.csv(allergy, "data/external/allergy_meds.csv", row.names = FALSE)
 
 # explore ----------------------------------------------
 
