@@ -331,26 +331,111 @@ data_demographics <- pts_all %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
 
-write.csv(data_demographics, "data/external/demographics.csv", row.names = FALSE)
-write.csv(meds_albuterol_cont_run, "data/external/albuterol_cont_all.csv", row.names = FALSE)
-write.csv(meds_albuterol_cont_dosing, "data/external/albuterol_cont_summary.csv", row.names = FALSE)
-write.csv(meds_albuterol_mdi_run, "data/external/albuterol_mdi_all.csv", row.names = FALSE)
-write.csv(meds_albuterol_mdi_dosing, "data/external/albuterol_mdi_summary.csv", row.names = FALSE)
-write.csv(meds_albuterol_neb_run, "data/external/albuterol_neb_all.csv", row.names = FALSE)
-write.csv(meds_albuterol_neb_dosing, "data/external/albuterol_neb_summary.csv", row.names = FALSE)
-write.csv(data_meds_steroids_run, "data/external/steroids_all.csv", row.names = FALSE)
-write.csv(data_meds_steroids_dosing, "data/external/steroids_summary.csv", row.names = FALSE)
+write.csv(
+    data_demographics,
+    "data/external/demographics.csv",
+    row.names = FALSE
+)
 
-if (exists("meds_mag_cont_run")) write.csv(meds_mag_cont_run, "data/external/magnesium_cont_all.csv", row.names = FALSE)
-if (exists("meds_mag_cont_dosing")) write.csv(meds_mag_cont_dosing, "data/external/magnesium_cont_summary.csv", row.names = FALSE)
+write.csv(
+    meds_albuterol_cont_run,
+    "data/external/albuterol_cont_all.csv",
+    row.names = FALSE
+)
 
-write.csv(meds_mag_run, "data/external/magnesium_all.csv", row.names = FALSE)
-write.csv(meds_mag_dosing, "data/external/magnesium_summary.csv", row.names = FALSE)
-write.csv(bp_mag, "data/external/bp_magnesium.csv", row.names = FALSE)
+write.csv(
+    meds_albuterol_cont_dosing,
+    "data/external/albuterol_cont_summary.csv",
+    row.names = FALSE
+)
 
-write.csv(locations, "data/external/locations.csv", row.names = FALSE)
-write.csv(vent, "data/external/vent.csv", row.names = FALSE)
-write.csv(allergy, "data/external/allergy_meds.csv", row.names = FALSE)
+write.csv(
+    meds_albuterol_mdi_run,
+    "data/external/albuterol_mdi_all.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    meds_albuterol_mdi_dosing,
+    "data/external/albuterol_mdi_summary.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    meds_albuterol_neb_run,
+    "data/external/albuterol_neb_all.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    meds_albuterol_neb_dosing,
+    "data/external/albuterol_neb_summary.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    data_meds_steroids_run,
+    "data/external/steroids_all.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    data_meds_steroids_dosing,
+    "data/external/steroids_summary.csv",
+    row.names = FALSE
+)
+
+if (exists("meds_mag_cont_run")) {
+    write.csv(
+        meds_mag_cont_run,
+        "data/external/magnesium_cont_all.csv",
+        row.names = FALSE
+    )
+}
+
+if (exists("meds_mag_cont_dosing")) {
+    write.csv(
+        meds_mag_cont_dosing,
+        "data/external/magnesium_cont_summary.csv",
+        row.names = FALSE
+    )
+}
+
+write.csv(
+    meds_mag_run,
+    "data/external/magnesium_all.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    meds_mag_dosing,
+    "data/external/magnesium_summary.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    bp_mag,
+    "data/external/bp_magnesium.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    locations,
+    "data/external/locations.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    vent,
+    "data/external/vent.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    allergy,
+    "data/external/allergy_meds.csv",
+    row.names = FALSE
+)
 
 # explore ----------------------------------------------
 
@@ -385,6 +470,16 @@ med_rate <- meds_albuterol_cont %>%
         by = c("millennium.id", "orig.order.id" = "order.id")
     ) %>%
     filter(!is.na(rate.text))
+
+rate_20 <- med_rate %>%
+    filter(rate.text == 20) %>%
+    distinct(millennium.id, med.location)
+
+write.csv(
+    rate_20,
+    "data/external/cont_albuterol_locations.csv",
+    row.names = FALSE
+)
 
 # by each rate / year, mean/median duration at that rate
 
