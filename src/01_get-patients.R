@@ -584,6 +584,37 @@ data_med_cont_intermit <- intermit %>%
            med.datetime >= rate.start,
            med.datetime <= rate.start + hours(duration))
 
+# continuous + 10 puff q2h
+
+tmp_cont <- data_med_cont_durations %>%
+    group_by(millennium.id, year) %>%
+    rename(rate.start = med.datetime)
+
+data_med_cont_10q2 <- intermit %>%
+    inner_join(tmp_cont, by = c("millennium.id", "year")) %>%
+    mutate_at("duration", as.integer) %>%
+    filter(med.dose == 10,
+           str_detect(
+               freq,
+               regex("q2h", ignore_case = TRUE)
+           ),
+           med.datetime >= rate.start,
+           med.datetime <= rate.start + hours(duration)) %>%
+    group_by(millennium.id, orig.order.id) %>%
+    summarize(
+        overlap = difftime(
+            last(med.datetime),
+            first(med.datetime),
+            units = "hours"
+        )
+    )
+
+write.csv(
+    data_med_cont_10q2,
+    "data/external/cont_10q2.csv",
+    row.names = FALSE
+)
+
 # duration of puffs / nebs at each frequency
 
 data_med_intermit_duration <- meds_albuterol %>%
