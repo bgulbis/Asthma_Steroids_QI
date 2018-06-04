@@ -62,6 +62,7 @@ mbo_order <- concat_encounters(meds_albuterol$orig.order.id, 1000)
 # run the following MBO queries using mbo_alb
 #   * Demographics
 #   * Diagnosis Codes (ICD-9/10-CM) - All
+#   * Encounters
 #   * Identifiers - by Millennium Encounter Id
 #   * Location History
 #   * Measures
@@ -265,6 +266,9 @@ bp_mag <- meds_mag %>%
 
 # allergy meds -----------------------------------------
 
+encounters <- read_data(dir_raw, "encounters", FALSE) %>%
+    as.encounters()
+
 allergy <- raw_meds %>%
     semi_join(pts_all, by = "millennium.id") %>%
     filter(
@@ -278,6 +282,19 @@ allergy <- raw_meds %>%
             "mometasone"
         )
     )
+
+data_allergy_first <- allergy %>%
+    arrange(millennium.id, med.datetime) %>%
+    distinct(millennium.id, .keep_all = TRUE) %>%
+    left_join(encounters, by = "millennium.id") %>%
+    mutate(
+        allergy.first.days = difftime(
+            med.datetime,
+            admit.datetime,
+            units = "days"
+        )
+    ) %>%
+    select(millennium.id, med, allergy.first.days)
 
 # measures ---------------------------------------------
 
@@ -434,6 +451,12 @@ write.csv(
 write.csv(
     allergy,
     "data/external/allergy_meds.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    data_allergy_first,
+    "data/external/allergy_meds_first.csv",
     row.names = FALSE
 )
 
