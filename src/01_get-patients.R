@@ -540,7 +540,8 @@ data_med_cont_durations <- med_rate %>%
 
 cont_start <- data_med_cont_durations %>%
     group_by(millennium.id, year) %>%
-    summarize_at("med.datetime", min) %>%
+    arrange(millennium.id, med.datetime) %>%
+    summarize_at(c("med.datetime", "rate.text"), first) %>%
     rename(cont.start = med.datetime)
 
 intermit <- meds_albuterol %>%
@@ -593,6 +594,68 @@ data_med_intermit_start_any <- intermit %>%
             units = "hours"
         )
     )
+
+tmp_intermit_start <- data_med_intermit_start_any %>%
+    select(millennium.id, intermit.start = med.datetime)
+
+# time continuous until intermittent; mg/kg/hr - time-wt-avg, cumulative
+# number of patients started at each rate (5, 10, 20)
+# initial rate in mg/kg/hr
+# recommended: 0.5 mg/kg/hr
+
+tmp_alb_summary <- med_rate %>%
+    left_join(tmp_intermit_start, by = "millennium.id") %>%
+    left_join(
+        data_demographics[c("millennium.id", "year", "weight")],
+        by = "millennium.id"
+    ) %>%
+    filter(med.datetime <= intermit.start) %>%
+    mutate(med.rate = rate.text) %>%
+    mutate(
+        med = "albuterol",
+        med.rate.units = "mg/hr"
+    )
+
+last_alb <- tmp_alb_summary %>%
+    group_by(millennium.id, year, weight) %>%
+    summarize_all(last) %>%
+    mutate(med.datetime = intermit.start)
+
+tmp_alb_run <- tmp_alb_summary %>%
+    bind_rows(last_alb) %>%
+    arrange(millennium.id, year, med, med.datetime)
+
+attr(tmp_alb_run, "data") <- "mbo"
+
+tmp_alb_runtime <- tmp_alb_run %>%
+    calc_runtime(year, weight)
+
+data_cont_albuterol_summary <- tmp_alb_runtime %>%
+    summarize_data(year)
+
+data_cont_albuterol_summary_weight <- tmp_alb_runtime %>%
+    mutate_at("med.rate", funs(. / weight)) %>%
+    summarize_data(year)
+
+write.csv(
+    tmp_alb_runtime,
+    "data/external/albuterol_continous_rates.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    data_cont_albuterol_summary,
+    "data/external/albuterol_continous_summarized.csv",
+    row.names = FALSE
+)
+
+write.csv(
+    data_cont_albuterol_summary_weight,
+    "data/external/albuterol_continous_summarized_weight-based.csv",
+    row.names = FALSE
+)
+
+
 # if on 10mg/hr were they also on 10 puffs q4h, duration (sub for 20mg/hr)
 
 cont_10 <- data_med_cont_durations %>%
