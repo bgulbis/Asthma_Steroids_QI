@@ -374,3 +374,84 @@ data_cont_albuterol_summary_weight %>%
     add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
 ```
 
+```{r}
+df <- data_med_cont_10q2 %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")], 
+        by = "millennium.id"
+    ) 
+    
+count_pts <- df %>%
+    ungroup() %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
+names(hdr_total) <- c(" ", x, y, " ", z)
+
+p_df <- df %>%
+    select(year, overlap) %>%
+    mutate(var_name = "overlap") %>%
+    mutate_at("overlap", as.numeric) %>%
+    group_by(var_name) %>%
+    do(
+        tidy(
+            wilcox.test(
+                overlap ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(var_name, p.value, conf.low, conf.high) %>%
+    ungroup()
+
+df %>%
+    group_by(year) %>%
+    summarize_at(
+        "overlap", 
+        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
+        na.rm = TRUE
+    ) %>%
+    mutate(var_name = "overlap") %>%
+    unite(all_measures, median, q25, q75) %>%
+    spread(year, all_measures) %>%
+    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
+    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
+    left_join(p_df, by = "var_name") %>%
+    mutate_at(
+        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        "var_name", 
+        str_replace_all, 
+        pattern = c(
+            "overlap" = "Duration of overlap (hr)"
+        )
+    ) %>%
+    knitr::kable(
+        digits = c(rep(1, 7), rep(3, 3)), 
+        caption = "Combined continous albuterol 10 mg/hr and 10 puffs every 2 hr",
+        booktabs = TRUE,
+        col.names = c(
+            "Variable", 
+            "Median", 
+            "25th", 
+            "75th",
+            "Median", 
+            "25th", 
+            "75th",
+            "p-value", 
+            "low", 
+            "high"
+        )
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+```
+
