@@ -1,0 +1,197 @@
+---
+title: "Albuterol MUE Statistics"
+author: "Megan Moore, Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+options(knitr.table.format = "html")
+```
+
+```{r}
+library(tidyverse)
+library(broom)
+library(kableExtra)
+library(themebg)
+
+x <- dirr::get_rds("../data/tidy/megan")
+```
+
+```{r}
+count_pts <- data_demographics %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
+names(hdr_total) <- c(" ", x, y, " ", z)
+```
+
+```{r, eval=FALSE}
+data_demographics %>%
+    select(age, age.days, length.stay, height, weight) %>%
+    gather(key, value) %>%
+    ggplot(aes(sample = value)) +
+    geom_qq() +
+    facet_wrap(~ key, scales = "free") +
+    theme_bg()
+```
+
+
+```{r}
+p_demog <- data_demographics %>%
+    select(
+        millennium.id,
+        year,
+        age,
+        age.days,
+        length.stay,
+        height,
+        weight
+    ) %>%
+    gather(var_name, value, age:weight) %>%
+    group_by(var_name) %>%
+    do(
+        tidy(
+            wilcox.test(
+                value ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(var_name, p.value, conf.low, conf.high) %>%
+    ungroup()
+
+data_demographics %>%
+    group_by(year) %>%
+    summarize_at(
+        c("age", "age.days", "length.stay", "height", "weight"), 
+        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
+        na.rm = TRUE
+    ) %>%
+    gather(var_name, result, -year) %>%
+    separate(var_name, c("var_name", "measure"), sep = "_") %>%
+    spread(measure, result) %>%
+    unite(all_measures, median, q25, q75) %>%
+    spread(year, all_measures) %>%
+    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
+    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
+    left_join(p_demog, by = "var_name") %>%
+    mutate_at(
+        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        "var_name", 
+        str_replace_all, 
+        pattern = c(
+            "age.days" = "Age (days)",
+            "age" = "Age (years)", 
+            "length.stay" = "Length of stay",
+            "height" = "Height (cm)",
+            "weight" = "Weight (kg)"
+        )
+    ) %>%
+    knitr::kable(
+        digits = c(rep(1, 7), rep(3, 3)), 
+        caption = "Baseline characteristics",
+        booktabs = TRUE,
+        col.names = c(
+            "Variable", 
+            "Median", 
+            "25th", 
+            "75th",
+            "Median", 
+            "25th", 
+            "75th",
+            "p-value", 
+            "low", 
+            "high"
+        )
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+```
+
+```{r}
+p_gender <- data_demographics %>%
+    select(year, gender, race) %>%
+    gather(var_name, value, gender, race) %>%
+    group_by(var_name) %>%
+    do(tidy(chisq.test(.$year, .$value))) %>%
+    select(var_name, p.value) 
+
+df_gender <- data_demographics %>%
+    filter(!is.na(gender),
+           gender == "Male") %>%
+    count(year, gender) %>%
+    rename(var_name = gender, 
+           result = n) %>%
+    left_join(count_pts, by = "year") %>%
+    mutate(pct = result / n * 100) %>%
+    select(-n) %>%
+    unite(result_pct, result, pct) %>%
+    spread(year, result_pct) %>%
+    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+    mutate_at(
+        c("result1", "pct1", "result2", "pct2"), 
+        as.numeric
+    ) %>%
+    mutate(var = "gender")
+
+df_race <- data_demographics %>%
+    mutate_at("race", funs(coalesce(., "Unknown"))) %>%
+    filter(!is.na(race)) %>%
+    count(year, race) %>%
+    rename(
+        var_name = race, 
+        result = n
+    ) %>%
+    left_join(count_pts, by = "year") %>%
+    mutate(pct = result / n * 100) %>%
+    select(-n) %>%
+    unite(result_pct, result, pct) %>%
+    spread(year, result_pct) %>%
+    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+    mutate_at(
+        c("result1", "pct1", "result2", "pct2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        c("result1", "pct1", "result2", "pct2"), 
+        funs(coalesce(., 0))
+    ) %>%
+    arrange(desc(pct1)) %>%
+    mutate(var = "race_val")
+
+hdr_total <- c(" " = 1, x = 2, y = 2, " " = 1)
+names(hdr_total) <- c(" ", x, y, " ")
+
+df_gender %>%
+    add_row(var_name = "Race", var = "race") %>%
+    bind_rows(df_race) %>%
+    left_join(p_gender, by = c("var" = "var_name")) %>%
+    select(-var) %>%
+    # mutate_all(funs(coalesce(., ""))) %>%
+    knitr::kable(
+        digits = c(rep(0, 5), 3),
+        booktabs = TRUE,
+        caption = "Baseline demographics",
+        col.names = c("Variable", "n", "%", "n", "%", "p-value")
+    ) %>%
+    kable_styling() %>%
+    # collapse_rows(columns = 6) %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c("", "2016" = 2, "2017" = 2, "")) %>%
+    group_rows("", 3, nrow(df_race) + 2, label_row_css = "")
+
+```
+
