@@ -195,3 +195,182 @@ df_gender %>%
 
 ```
 
+```{r, eval=FALSE}
+data_cont_albuterol_summary %>%
+    ggplot(aes(sample = time.wt.avg)) +
+    geom_qq() +
+    theme_bg()
+```
+
+```{r}
+count_pts <- data_cont_albuterol_summary %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
+names(hdr_total) <- c(" ", x, y, " ", z)
+
+p_cont_alb <- data_cont_albuterol_summary %>%
+    select(
+        year,
+        cum.dose,
+        first.rate,
+        max.rate,
+        duration,
+        time.wt.avg
+    ) %>%
+    gather(var_name, value, -year) %>%
+    group_by(var_name) %>%
+    do(
+        tidy(
+            wilcox.test(
+                value ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(var_name, p.value, conf.low, conf.high) %>%
+    ungroup()
+
+data_cont_albuterol_summary %>%
+    group_by(year) %>%
+    summarize_at(
+        c("cum.dose", "first.rate", "max.rate", "duration", "time.wt.avg"), 
+        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
+        na.rm = TRUE
+    ) %>%
+    gather(var_name, result, -year) %>%
+    separate(var_name, c("var_name", "measure"), sep = "_") %>%
+    spread(measure, result) %>%
+    unite(all_measures, median, q25, q75) %>%
+    spread(year, all_measures) %>%
+    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
+    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
+    left_join(p_cont_alb, by = "var_name") %>%
+    mutate_at(
+        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        "var_name", 
+        str_replace_all, 
+        pattern = c(
+            "cum.dose" = "Cumulative dose (mg)",
+            "first.rate" = "Initial rate (mg/hr)", 
+            "max.rate" = "Maximum rate (mg/hr)",
+            "duration" = "Duration of infusion until intermittent (hr)",
+            "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
+        )
+    ) %>%
+    knitr::kable(
+        digits = c(rep(1, 7), rep(3, 3)), 
+        caption = "Continuous albuterol data (not weight-based)",
+        booktabs = TRUE,
+        col.names = c(
+            "Variable", 
+            "Median", 
+            "25th", 
+            "75th",
+            "Median", 
+            "25th", 
+            "75th",
+            "p-value", 
+            "low", 
+            "high"
+        )
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+```
+
+```{r}
+count_pts <- data_cont_albuterol_summary_weight %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
+names(hdr_total) <- c(" ", x, y, " ", z)
+
+p_cont_alb <- data_cont_albuterol_summary_weight %>%
+    select(
+        year,
+        cum.dose,
+        first.rate,
+        max.rate,
+        duration,
+        time.wt.avg
+    ) %>%
+    gather(var_name, value, -year) %>%
+    group_by(var_name) %>%
+    do(
+        tidy(
+            wilcox.test(
+                value ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(var_name, p.value, conf.low, conf.high) %>%
+    ungroup()
+
+data_cont_albuterol_summary_weight %>%
+    group_by(year) %>%
+    summarize_at(
+        c("cum.dose", "first.rate", "max.rate", "duration", "time.wt.avg"), 
+        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
+        na.rm = TRUE
+    ) %>%
+    gather(var_name, result, -year) %>%
+    separate(var_name, c("var_name", "measure"), sep = "_") %>%
+    spread(measure, result) %>%
+    unite(all_measures, median, q25, q75) %>%
+    spread(year, all_measures) %>%
+    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
+    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
+    left_join(p_cont_alb, by = "var_name") %>%
+    mutate_at(
+        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        "var_name", 
+        str_replace_all, 
+        pattern = c(
+            "cum.dose" = "Cumulative dose (mg/kg)",
+            "first.rate" = "Initial rate (mg/kg/hr)", 
+            "max.rate" = "Maximum rate (mg/kg/hr)",
+            "duration" = "Duration of infusion until intermittent (hr)",
+            "time.wt.avg" = "Time-weighted average infusion rate (mg/kg/hr)"
+        )
+    ) %>%
+    knitr::kable(
+        digits = c(rep(1, 7), rep(3, 3)), 
+        caption = "Continuous albuterol data (weight-based)",
+        booktabs = TRUE,
+        col.names = c(
+            "Variable", 
+            "Median", 
+            "25th", 
+            "75th",
+            "Median", 
+            "25th", 
+            "75th",
+            "p-value", 
+            "low", 
+            "high"
+        )
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+```
+
