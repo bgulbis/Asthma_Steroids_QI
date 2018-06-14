@@ -146,14 +146,15 @@ meds_albuterol_cont <- meds %>%
     # filter(is.na(order.datetime))
     # filter(!is.na(event.tag) | route == "IV")
 
-meds_albuterol_cont_run <- meds_albuterol %>%
+data_meds_albuterol_cont_run <- meds_albuterol %>%
     filter(!is.na(event.tag) | med.dose.units == "microgram") %>%
     mutate_at("med.rate", funs(na_if(., 0L))) %>%
     mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
     mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
     calc_runtime()
 
-meds_albuterol_cont_dosing <- summarize_data(meds_albuterol_cont_run)
+data_meds_albuterol_cont_dosing <- data_meds_albuterol_cont_run %>%
+    summarize_data()
 
 mbo_cont <- concat_encounters(meds_albuterol_cont$orig.order.id, 1000)
 
@@ -173,7 +174,7 @@ raw_orders_cont <- read_data(dir_raw, "orders-details-cont", FALSE) %>%
 # run MBO query
 #   * Orders Meds - Details - by Order Id, Cont
 
-meds_albuterol_mdi_run <- meds_albuterol %>%
+data_meds_albuterol_mdi_run <- meds_albuterol %>%
     filter(med.dose.units == "puff") %>%
     calc_runtime(cont = FALSE) %>%
     mutate(
@@ -188,10 +189,10 @@ meds_albuterol_mdi_run <- meds_albuterol %>%
         by = c("millennium.id", "orig.order.id" = "order.id")
     )
 
-meds_albuterol_mdi_dosing <- meds_albuterol_mdi_run %>%
+data_meds_albuterol_mdi_dosing <- data_meds_albuterol_mdi_run %>%
     summarize_data(cont = FALSE)
 
-meds_albuterol_neb_run <- meds_albuterol %>%
+data_meds_albuterol_neb_run <- meds_albuterol %>%
     filter(
         is.na(event.tag),
         med.dose.units != "microgram",
@@ -210,7 +211,7 @@ meds_albuterol_neb_run <- meds_albuterol %>%
         by = c("millennium.id", "orig.order.id" = "order.id")
     )
 
-meds_albuterol_neb_dosing <- meds_albuterol_neb_run %>%
+data_meds_albuterol_neb_dosing <- data_meds_albuterol_neb_run %>%
     summarize_data(cont = FALSE)
 
 # other ---------------------------------------------
@@ -237,27 +238,28 @@ meds_mag <- raw_meds %>%
         route %in% c("IV", "IVPB")
     )
 
-meds_mag_cont <- meds_mag %>%
+data_meds_mag_cont <- meds_mag %>%
     filter(!is.na(event.tag))
 
-if (nrow(meds_mag_cont) > 0) {
-    meds_mag_cont_run <- meds_mag_cont %>%
+if (nrow(data_meds_mag_cont) > 0) {
+    data_meds_mag_cont_run <- data_meds_mag_cont %>%
         mutate_at("med.rate", funs(na_if(., 0L))) %>%
         mutate_at("med.rate", funs(coalesce(., med.dose))) %>%
         mutate_at("med.rate.units", funs(coalesce(., med.dose.units))) %>%
         calc_runtime()
 
-    meds_mag_cont_dosing <- summarize_data(meds_mag_cont_run)
+    data_meds_mag_cont_dosing <- data_meds_mag_cont_run %>%
+        summarize_data()
 }
 
-meds_mag_run <- meds_mag %>%
+data_meds_mag_run <- meds_mag %>%
     filter(is.na(event.tag)) %>%
     calc_runtime(cont = FALSE)
 
-meds_mag_dosing <- meds_mag_run %>%
+data_meds_mag_dosing <- data_meds_mag_run %>%
     summarize_data(cont = FALSE)
 
-bp_mag <- meds_mag %>%
+data_meds_mag_bp <- meds_mag %>%
     left_join(sbp, by = "millennium.id") %>%
     filter(
         difftime(med.datetime, vital.datetime, units = "hours") > 0,
@@ -269,7 +271,7 @@ bp_mag <- meds_mag %>%
 encounters <- read_data(dir_raw, "encounters", FALSE) %>%
     as.encounters()
 
-allergy <- raw_meds %>%
+data_meds_allergy <- raw_meds %>%
     semi_join(pts_all, by = "millennium.id") %>%
     filter(
         med %in% c(
@@ -283,7 +285,7 @@ allergy <- raw_meds %>%
         )
     )
 
-data_allergy_first <- allergy %>%
+data_meds_allergy_first <- data_meds_allergy %>%
     arrange(millennium.id, med.datetime) %>%
     distinct(millennium.id, .keep_all = TRUE) %>%
     left_join(encounters, by = "millennium.id") %>%
@@ -310,14 +312,14 @@ measures <- raw_measures %>%
 
 # locations --------------------------------------------
 
-locations <- read_data(dir_raw, "locations", FALSE) %>%
+data_locations <- read_data(dir_raw, "locations", FALSE) %>%
     as.locations() %>%
     tidy_data() %>%
     semi_join(pts_all, by = "millennium.id")
 
 # vent -------------------------------------------------
 
-vent <- read_data(dir_raw, "vent", FALSE) %>%
+data_vent <- read_data(dir_raw, "vent", FALSE) %>%
     as.events() %>%
     select(millennium.id:event.result, event.location) %>%
     arrange(millennium.id, event.datetime) %>%
@@ -329,7 +331,7 @@ vent <- read_data(dir_raw, "vent", FALSE) %>%
         .keep_all = TRUE
     )
 
-# data sets --------------------------------------------
+# demographics -----------------------------------------
 
 id <- read_data(dir_raw, "identifiers", FALSE) %>%
     as.id()
@@ -347,118 +349,6 @@ data_demographics <- pts_all %>%
     mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
     select(-disposition, -visit.type, -facility)
-
-write.csv(
-    data_demographics,
-    "data/external/demographics.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_cont_run,
-    "data/external/albuterol_cont_all.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_cont_dosing,
-    "data/external/albuterol_cont_summary.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_mdi_run,
-    "data/external/albuterol_mdi_all.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_mdi_dosing,
-    "data/external/albuterol_mdi_summary.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_neb_run,
-    "data/external/albuterol_neb_all.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_albuterol_neb_dosing,
-    "data/external/albuterol_neb_summary.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    data_meds_steroids_run,
-    "data/external/steroids_all.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    data_meds_steroids_dosing,
-    "data/external/steroids_summary.csv",
-    row.names = FALSE
-)
-
-if (exists("meds_mag_cont_run")) {
-    write.csv(
-        meds_mag_cont_run,
-        "data/external/magnesium_cont_all.csv",
-        row.names = FALSE
-    )
-}
-
-if (exists("meds_mag_cont_dosing")) {
-    write.csv(
-        meds_mag_cont_dosing,
-        "data/external/magnesium_cont_summary.csv",
-        row.names = FALSE
-    )
-}
-
-write.csv(
-    meds_mag_run,
-    "data/external/magnesium_all.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    meds_mag_dosing,
-    "data/external/magnesium_summary.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    bp_mag,
-    "data/external/bp_magnesium.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    locations,
-    "data/external/locations.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    vent,
-    "data/external/vent.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    allergy,
-    "data/external/allergy_meds.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    data_allergy_first,
-    "data/external/allergy_meds_first.csv",
-    row.names = FALSE
-)
 
 # explore ----------------------------------------------
 
@@ -627,34 +517,15 @@ tmp_alb_run <- tmp_alb_summary %>%
 
 attr(tmp_alb_run, "data") <- "mbo"
 
-tmp_alb_runtime <- tmp_alb_run %>%
+data_meds_alb_runtime <- tmp_alb_run %>%
     calc_runtime(year, weight)
 
-data_cont_albuterol_summary <- tmp_alb_runtime %>%
+data_cont_albuterol_summary <- data_meds_alb_runtime %>%
     summarize_data(year)
 
-data_cont_albuterol_summary_weight <- tmp_alb_runtime %>%
+data_cont_albuterol_summary_weight <- data_meds_alb_runtime %>%
     mutate_at("med.rate", funs(. / weight)) %>%
     summarize_data(year)
-
-write.csv(
-    tmp_alb_runtime,
-    "data/external/albuterol_continous_rates.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    data_cont_albuterol_summary,
-    "data/external/albuterol_continous_summarized.csv",
-    row.names = FALSE
-)
-
-write.csv(
-    data_cont_albuterol_summary_weight,
-    "data/external/albuterol_continous_summarized_weight-based.csv",
-    row.names = FALSE
-)
-
 
 # if on 10mg/hr were they also on 10 puffs q4h, duration (sub for 20mg/hr)
 
@@ -694,12 +565,6 @@ data_med_cont_10q2 <- intermit %>%
             units = "hours"
         )
     )
-
-write.csv(
-    data_med_cont_10q2,
-    "data/external/cont_10q2.csv",
-    row.names = FALSE
-)
 
 # duration of puffs / nebs at each frequency
 
@@ -820,6 +685,15 @@ data_albut_total <- cont_to_q4 %>%
     )
 
 dirr::save_rds("data/tidy/megan", "data_")
+
+ls(.GlobalEnv, pattern = "data_") %>%
+    walk(
+        ~write.csv(
+            get(.x),
+            paste0("data/external/megan/", .x, ".csv"),
+            row.names = FALSE
+        )
+    )
 
 # df <- data_med_cont_durations %>%
 #     ungroup() %>%
