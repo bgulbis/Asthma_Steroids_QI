@@ -17,18 +17,50 @@ library(kableExtra)
 library(themebg)
 
 x <- dirr::get_rds("../data/tidy/megan")
-```
+id_col <- "millennium.id"
 
-```{r}
-count_pts <- data_demographics %>%
-    count(year)
+cont_cols <- c(
+    "Variable", 
+    "Median", 
+    "25th", 
+    "75th",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
 
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
+cat_cols <- c("Variable", "n", "%", "n", "%", "p-value")
 
-hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
-names(hdr_total) <- c(" ", x, y, " ", z)
+make_header <- function(df, len = 3, ci = TRUE) {
+    cnt <- count(df, year)
+
+    x <- paste("n =", cnt$n[[1]])
+    y <- paste("n =", cnt$n[[2]])
+    z <- "95% CI"
+    
+    hdr <- c(" " = 1, x = len, y = len, " " = 1)
+    nm <- c(" ", x, y, " ")
+    
+    if (ci) {
+        hdr <- c(hdr, z = 2)
+        names(hdr) <- c(nm, z)
+    } else {
+        names(hdr) <- nm
+    }    
+    
+    hdr
+}
+
+hdr_year <- function(len = 3, ci = TRUE) {
+    x <- c(" ", "2016" = len, "2017" = len, " ")
+    if (ci) x <- c(x, " ", " ")
+    
+    x
+}
+
 ```
 
 ```{r, eval=FALSE}
@@ -101,22 +133,11 @@ data_demographics %>%
         digits = c(rep(1, 7), rep(3, 3)), 
         caption = "Baseline characteristics",
         booktabs = TRUE,
-        col.names = c(
-            "Variable", 
-            "Median", 
-            "25th", 
-            "75th",
-            "Median", 
-            "25th", 
-            "75th",
-            "p-value", 
-            "low", 
-            "high"
-        )
+        col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+    add_header_above(header = make_header(data_demographics)) %>%
+    add_header_above(hdr_year())
 ```
 
 ```{r}
@@ -133,7 +154,10 @@ df_gender <- data_demographics %>%
     count(year, gender) %>%
     rename(var_name = gender, 
            result = n) %>%
-    left_join(count_pts, by = "year") %>%
+    left_join(
+        count(data_demographics, year), 
+        by = "year"
+    ) %>%
     mutate(pct = result / n * 100) %>%
     select(-n) %>%
     unite(result_pct, result, pct) %>%
@@ -154,7 +178,10 @@ df_race <- data_demographics %>%
         var_name = race, 
         result = n
     ) %>%
-    left_join(count_pts, by = "year") %>%
+    left_join(
+        count(data_demographics, year), 
+        by = "year"
+    ) %>%
     mutate(pct = result / n * 100) %>%
     select(-n) %>%
     unite(result_pct, result, pct) %>%
@@ -172,25 +199,22 @@ df_race <- data_demographics %>%
     arrange(desc(pct1)) %>%
     mutate(var = "race_val")
 
-hdr_total <- c(" " = 1, x = 2, y = 2, " " = 1)
-names(hdr_total) <- c(" ", x, y, " ")
-
 df_gender %>%
     add_row(var_name = "Race", var = "race") %>%
     bind_rows(df_race) %>%
     left_join(p_gender, by = c("var" = "var_name")) %>%
     select(-var) %>%
-    # mutate_all(funs(coalesce(., ""))) %>%
     knitr::kable(
         digits = c(rep(0, 5), 3),
         booktabs = TRUE,
         caption = "Baseline demographics",
-        col.names = c("Variable", "n", "%", "n", "%", "p-value")
+        col.names = cat_cols
     ) %>%
     kable_styling() %>%
-    # collapse_rows(columns = 6) %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c("", "2016" = 2, "2017" = 2, "")) %>%
+    add_header_above(
+        header = make_header(data_demographics, 2, ci = FALSE)
+    ) %>%
+    add_header_above(hdr_year(2, FALSE)) %>%
     group_rows("", 3, nrow(df_race) + 2, label_row_css = "")
 
 ```
@@ -203,16 +227,6 @@ data_cont_albuterol_summary %>%
 ```
 
 ```{r}
-count_pts <- data_cont_albuterol_summary %>%
-    count(year)
-
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
-
-hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
-names(hdr_total) <- c(" ", x, y, " ", z)
-
 p_cont_alb <- data_cont_albuterol_summary %>%
     select(
         year,
@@ -270,35 +284,14 @@ data_cont_albuterol_summary %>%
         digits = c(rep(1, 7), rep(3, 3)), 
         caption = "Continuous albuterol data (not weight-based)",
         booktabs = TRUE,
-        col.names = c(
-            "Variable", 
-            "Median", 
-            "25th", 
-            "75th",
-            "Median", 
-            "25th", 
-            "75th",
-            "p-value", 
-            "low", 
-            "high"
-        )
+        col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+    add_header_above(header = make_header(data_cont_albuterol_summary)) %>%
+    add_header_above(hdr_year())
 ```
 
 ```{r}
-count_pts <- data_cont_albuterol_summary_weight %>%
-    count(year)
-
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
-
-hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
-names(hdr_total) <- c(" ", x, y, " ", z)
-
 p_cont_alb <- data_cont_albuterol_summary_weight %>%
     select(
         year,
@@ -356,42 +349,22 @@ data_cont_albuterol_summary_weight %>%
         digits = c(rep(1, 7), rep(3, 3)), 
         caption = "Continuous albuterol data (weight-based)",
         booktabs = TRUE,
-        col.names = c(
-            "Variable", 
-            "Median", 
-            "25th", 
-            "75th",
-            "Median", 
-            "25th", 
-            "75th",
-            "p-value", 
-            "low", 
-            "high"
-        )
+        col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+    add_header_above(
+        header = make_header(data_cont_albuterol_summary_weight)
+    ) %>%
+    add_header_above(hdr_year())
 ```
 
 ```{r}
 df <- data_med_cont_10q2 %>%
     left_join(
-        data_demographics[c("millennium.id", "year")], 
-        by = "millennium.id"
+        data_demographics[c(id_col, "year")], 
+        by = id_col
     ) 
     
-count_pts <- df %>%
-    ungroup() %>%
-    count(year)
-
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
-
-hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
-names(hdr_total) <- c(" ", x, y, " ", z)
-
 p_df <- df %>%
     select(year, overlap) %>%
     mutate(var_name = "overlap") %>%
@@ -437,39 +410,20 @@ df %>%
         digits = c(rep(1, 7), rep(3, 3)), 
         caption = "Combined continous albuterol 10 mg/hr and 10 puffs every 2 hr",
         booktabs = TRUE,
-        col.names = c(
-            "Variable", 
-            "Median", 
-            "25th", 
-            "75th",
-            "Median", 
-            "25th", 
-            "75th",
-            "p-value", 
-            "low", 
-            "high"
-        )
+        col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+    add_header_above(header = make_header(df)) %>%
+    add_header_above(hdr_year())
 ```
 
 ```{r}
-
-count_pts <- data_demographics %>%
-    count(year)
-
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
-
 mag <- data_meds_mag_dosing %>%
     distinct(millennium.id) %>%
     mutate(mag = TRUE)
 
 p_mag <- data_demographics %>%
-    left_join(mag, by = "millennium.id") %>%
+    left_join(mag, by = id_col) %>%
     mutate_at("mag", funs(coalesce(., FALSE))) %>%
     select(year, mag) %>%
     do(tidy(chisq.test(.$year, .$mag))) %>%
@@ -477,12 +431,15 @@ p_mag <- data_demographics %>%
     select(var_name, p.value)
 
 df_mag <- data_demographics %>%
-    left_join(mag, by = "millennium.id") %>%
+    left_join(mag, by = id_col) %>%
     mutate_at("mag", funs(coalesce(., FALSE))) %>%
     count(year, mag) %>%
     filter(mag == TRUE) %>%
     rename(result = n) %>%
-    left_join(count_pts, by = "year") %>%
+    left_join(
+        count(data_demographics, year), 
+        by = "year"
+    ) %>%
     mutate(pct = result / n * 100) %>%
     select(-n, -mag) %>%
     unite(result_pct, result, pct) %>%
@@ -496,46 +453,30 @@ df_mag <- data_demographics %>%
     mutate(var = "Magnesium") %>%
     select(var, everything())
 
-hdr_total <- c(" " = 1, x = 2, y = 2, " " = 1)
-names(hdr_total) <- c(" ", x, y, " ")
-
 df_mag %>%
     left_join(p_mag, by = c("var" = "var_name")) %>%
     knitr::kable(
         digits = c(rep(0, 5), 3),
         booktabs = TRUE,
         caption = "Magnesium administration",
-        col.names = c("Variable", "n", "%", "n", "%", "p-value")
+        col.names = cat_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c("", "2016" = 2, "2017" = 2, "")) 
+    add_header_above(
+        header = make_header(data_demographics, 2, ci = FALSE)
+    ) %>%
+    add_header_above(hdr_year(2, ci = FALSE))
 
 ```
 
 ```{r}
-
-count_pts <- data_meds_mag_dosing %>%
-    distinct(millennium.id) %>%
+df <- data_meds_mag_dosing %>%
     left_join(
-        data_demographics[c("millennium.id", "year")],
-        by = "millennium.id"
-    ) %>%
-    count(year)
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) 
 
-x <- paste("n =", count_pts$n[[1]])
-y <- paste("n =", count_pts$n[[2]])
-z <- "95% CI"
-
-hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
-names(hdr_total) <- c(" ", x, y, " ", z)
-
-p_mag <- data_meds_mag_dosing %>%
-    select(millennium.id, n) %>%
-    left_join(
-        data_demographics[c("millennium.id", "year")],
-        by = "millennium.id"
-    ) %>%
+p_mag <- df %>%
     do(
         tidy(
             wilcox.test(
@@ -549,12 +490,7 @@ p_mag <- data_meds_mag_dosing %>%
     select(var_name, p.value, conf.low, conf.high) %>%
     ungroup()
 
-data_meds_mag_dosing %>%
-    select(millennium.id, n) %>%
-    left_join(
-        data_demographics[c("millennium.id", "year")],
-        by = "millennium.id"
-    ) %>%
+df %>%
     group_by(year) %>%
     summarize_at(
         "n", 
@@ -582,21 +518,10 @@ data_meds_mag_dosing %>%
         digits = c(rep(1, 7), rep(3, 3)), 
         caption = "Baseline characteristics",
         booktabs = TRUE,
-        col.names = c(
-            "Variable", 
-            "Median", 
-            "25th", 
-            "75th",
-            "Median", 
-            "25th", 
-            "75th",
-            "p-value", 
-            "low", 
-            "high"
-        )
+        col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = hdr_total) %>%
-    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+    add_header_above(header = make_header(df)) %>%
+    add_header_above(hdr_year())
 ```
 
