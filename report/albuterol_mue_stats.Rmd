@@ -455,3 +455,148 @@ df %>%
     add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
 ```
 
+```{r}
+
+count_pts <- data_demographics %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+mag <- data_meds_mag_dosing %>%
+    distinct(millennium.id) %>%
+    mutate(mag = TRUE)
+
+p_mag <- data_demographics %>%
+    left_join(mag, by = "millennium.id") %>%
+    mutate_at("mag", funs(coalesce(., FALSE))) %>%
+    select(year, mag) %>%
+    do(tidy(chisq.test(.$year, .$mag))) %>%
+    mutate(var_name = "Magnesium") %>%
+    select(var_name, p.value)
+
+df_mag <- data_demographics %>%
+    left_join(mag, by = "millennium.id") %>%
+    mutate_at("mag", funs(coalesce(., FALSE))) %>%
+    count(year, mag) %>%
+    filter(mag == TRUE) %>%
+    rename(result = n) %>%
+    left_join(count_pts, by = "year") %>%
+    mutate(pct = result / n * 100) %>%
+    select(-n, -mag) %>%
+    unite(result_pct, result, pct) %>%
+    spread(year, result_pct) %>%
+    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+    mutate_at(
+        c("result1", "pct1", "result2", "pct2"), 
+        as.numeric
+    ) %>%
+    mutate(var = "Magnesium") %>%
+    select(var, everything())
+
+hdr_total <- c(" " = 1, x = 2, y = 2, " " = 1)
+names(hdr_total) <- c(" ", x, y, " ")
+
+df_mag %>%
+    left_join(p_mag, by = c("var" = "var_name")) %>%
+    knitr::kable(
+        digits = c(rep(0, 5), 3),
+        booktabs = TRUE,
+        caption = "Magnesium administration",
+        col.names = c("Variable", "n", "%", "n", "%", "p-value")
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c("", "2016" = 2, "2017" = 2, "")) 
+
+```
+
+```{r}
+
+count_pts <- data_meds_mag_dosing %>%
+    distinct(millennium.id) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    ) %>%
+    count(year)
+
+x <- paste("n =", count_pts$n[[1]])
+y <- paste("n =", count_pts$n[[2]])
+z <- "95% CI"
+
+hdr_total <- c(" " = 1, x = 3, y = 3, " " = 1, z = 2)
+names(hdr_total) <- c(" ", x, y, " ", z)
+
+p_mag <- data_meds_mag_dosing %>%
+    select(millennium.id, n) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    ) %>%
+    do(
+        tidy(
+            wilcox.test(
+                n ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    mutate(var_name = "mag_num_doses") %>%
+    select(var_name, p.value, conf.low, conf.high) %>%
+    ungroup()
+
+data_meds_mag_dosing %>%
+    select(millennium.id, n) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    ) %>%
+    group_by(year) %>%
+    summarize_at(
+        "n", 
+        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
+        na.rm = TRUE
+    ) %>%
+    mutate(var_name = "mag_num_doses") %>%
+    unite(all_measures, median, q25, q75) %>%
+    spread(year, all_measures) %>%
+    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
+    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
+    left_join(p_mag, by = "var_name") %>%
+    mutate_at(
+        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
+        as.numeric
+    ) %>%
+    mutate_at(
+        "var_name", 
+        str_replace_all, 
+        pattern = c(
+            "mag_num.doses" = "Number of doses"
+        )
+    ) %>%
+    knitr::kable(
+        digits = c(rep(1, 7), rep(3, 3)), 
+        caption = "Baseline characteristics",
+        booktabs = TRUE,
+        col.names = c(
+            "Variable", 
+            "Median", 
+            "25th", 
+            "75th",
+            "Median", 
+            "25th", 
+            "75th",
+            "p-value", 
+            "low", 
+            "high"
+        )
+    ) %>%
+    kable_styling() %>%
+    add_header_above(header = hdr_total) %>%
+    add_header_above(c(" ", "2016" = 3, "2017" = 3, " ", " ", " "))
+```
+
