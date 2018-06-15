@@ -13,6 +13,7 @@ options(knitr.table.format = "html")
 ```{r}
 library(tidyverse)
 library(broom)
+library(rlang)
 library(kableExtra)
 library(themebg)
 
@@ -61,6 +62,53 @@ hdr_year <- function(len = 3, ci = TRUE) {
     x
 }
 
+p_cont <- function(df, ...) {
+    grp <- quos(...)
+    var_name <- sym("var_name")
+    
+    df %>%
+        gather("var_name", "value", !!!grp) %>%
+        group_by(!!var_name) %>%
+        do(
+            tidy(
+                wilcox.test(
+                    value ~ year, 
+                    data = ., 
+                    conf.int = TRUE
+                )
+            )
+        ) %>%
+        select(
+            !!var_name, 
+            !!sym("p.value"), 
+            !!sym("conf.low"),
+            !!sym("conf.high")
+        ) %>%
+        ungroup()
+}
+
+p_cat <- function(df, ...) {
+    grp <- quos(...)
+    var_name <- sym("var_name")
+
+    df %>%
+        select(!!sym("year"), !!!grp) %>%
+        gather("var_name", "value", !!!grp) %>%
+        group_by(!!var_name) %>%
+        do(
+            tidy(
+                chisq.test(
+                    .$year, .$value
+                )
+            )
+        ) %>%
+        select(
+            !!var_name, 
+            !!sym("p.value")
+        )
+}
+
+
 ```
 
 ```{r, eval=FALSE}
@@ -76,28 +124,7 @@ data_demographics %>%
 
 ```{r}
 p_demog <- data_demographics %>%
-    select(
-        millennium.id,
-        year,
-        age,
-        age.days,
-        length.stay,
-        height,
-        weight
-    ) %>%
-    gather(var_name, value, age:weight) %>%
-    group_by(var_name) %>%
-    do(
-        tidy(
-            wilcox.test(
-                value ~ year, 
-                data = ., 
-                conf.int = TRUE
-            )
-        )
-    ) %>%
-    select(var_name, p.value, conf.low, conf.high) %>%
-    ungroup()
+    p_cont(age, age.days, length.stay, height, weight)
 
 data_demographics %>%
     group_by(year) %>%
@@ -136,17 +163,14 @@ data_demographics %>%
         col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = make_header(data_demographics)) %>%
+    add_header_above(make_header(data_demographics)) %>%
     add_header_above(hdr_year())
 ```
 
 ```{r}
+
 p_gender <- data_demographics %>%
-    select(year, gender, race) %>%
-    gather(var_name, value, gender, race) %>%
-    group_by(var_name) %>%
-    do(tidy(chisq.test(.$year, .$value))) %>%
-    select(var_name, p.value) 
+    p_cat(gender, race)
 
 df_gender <- data_demographics %>%
     filter(!is.na(gender),
@@ -228,27 +252,7 @@ data_cont_albuterol_summary %>%
 
 ```{r}
 p_cont_alb <- data_cont_albuterol_summary %>%
-    select(
-        year,
-        cum.dose,
-        first.rate,
-        max.rate,
-        duration,
-        time.wt.avg
-    ) %>%
-    gather(var_name, value, -year) %>%
-    group_by(var_name) %>%
-    do(
-        tidy(
-            wilcox.test(
-                value ~ year, 
-                data = ., 
-                conf.int = TRUE
-            )
-        )
-    ) %>%
-    select(var_name, p.value, conf.low, conf.high) %>%
-    ungroup()
+    p_cont(cum.dose, first.rate, max.rate, duration, time.wt.avg)
 
 data_cont_albuterol_summary %>%
     group_by(year) %>%
@@ -292,28 +296,8 @@ data_cont_albuterol_summary %>%
 ```
 
 ```{r}
-p_cont_alb <- data_cont_albuterol_summary_weight %>%
-    select(
-        year,
-        cum.dose,
-        first.rate,
-        max.rate,
-        duration,
-        time.wt.avg
-    ) %>%
-    gather(var_name, value, -year) %>%
-    group_by(var_name) %>%
-    do(
-        tidy(
-            wilcox.test(
-                value ~ year, 
-                data = ., 
-                conf.int = TRUE
-            )
-        )
-    ) %>%
-    select(var_name, p.value, conf.low, conf.high) %>%
-    ungroup()
+p_cont_alb_wt <- data_cont_albuterol_summary_weight %>%
+    p_cont(cum.dose, first.rate, max.rate, duration, time.wt.avg)
 
 data_cont_albuterol_summary_weight %>%
     group_by(year) %>%
@@ -329,7 +313,7 @@ data_cont_albuterol_summary_weight %>%
     spread(year, all_measures) %>%
     separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
     separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_cont_alb, by = "var_name") %>%
+    left_join(p_cont_alb_wt, by = "var_name") %>%
     mutate_at(
         c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
         as.numeric
@@ -359,30 +343,17 @@ data_cont_albuterol_summary_weight %>%
 ```
 
 ```{r}
-df <- data_med_cont_10q2 %>%
+df_overlap <- data_med_cont_10q2 %>%
     left_join(
         data_demographics[c(id_col, "year")], 
         by = id_col
-    ) 
-    
-p_df <- df %>%
-    select(year, overlap) %>%
-    mutate(var_name = "overlap") %>%
-    mutate_at("overlap", as.numeric) %>%
-    group_by(var_name) %>%
-    do(
-        tidy(
-            wilcox.test(
-                overlap ~ year, 
-                data = ., 
-                conf.int = TRUE
-            )
-        )
     ) %>%
-    select(var_name, p.value, conf.low, conf.high) %>%
-    ungroup()
+    mutate_at("overlap", as.numeric) 
 
-df %>%
+p_cont_overlap <- df_overlap %>%
+    p_cont(overlap)
+    
+df_overlap %>%
     group_by(year) %>%
     summarize_at(
         "overlap", 
@@ -394,7 +365,7 @@ df %>%
     spread(year, all_measures) %>%
     separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
     separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_df, by = "var_name") %>%
+    left_join(p_cont_overlap, by = "var_name") %>%
     mutate_at(
         c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
         as.numeric
@@ -413,26 +384,25 @@ df %>%
         col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = make_header(df)) %>%
+    add_header_above(header = make_header(df_overlap)) %>%
     add_header_above(hdr_year())
 ```
 
 ```{r}
-mag <- data_meds_mag_dosing %>%
+df_mag <- data_meds_mag_dosing %>%
     distinct(millennium.id) %>%
-    mutate(mag = TRUE)
+    mutate(mag = TRUE) %>%
+    full_join(
+        data_demographics[c(id_col, "year")], 
+        by = id_col
+    ) %>%
+    mutate_at("mag", funs(coalesce(., FALSE))) 
 
-p_mag <- data_demographics %>%
-    left_join(mag, by = id_col) %>%
-    mutate_at("mag", funs(coalesce(., FALSE))) %>%
-    select(year, mag) %>%
-    do(tidy(chisq.test(.$year, .$mag))) %>%
-    mutate(var_name = "Magnesium") %>%
-    select(var_name, p.value)
+p_mag <- df_mag %>%
+    rename(Magnesium = mag) %>%
+    p_cat(Magnesium)
 
-df_mag <- data_demographics %>%
-    left_join(mag, by = id_col) %>%
-    mutate_at("mag", funs(coalesce(., FALSE))) %>%
+df_mag %>%
     count(year, mag) %>%
     filter(mag == TRUE) %>%
     rename(result = n) %>%
@@ -451,9 +421,7 @@ df_mag <- data_demographics %>%
         as.numeric
     ) %>%
     mutate(var = "Magnesium") %>%
-    select(var, everything())
-
-df_mag %>%
+    select(var, everything()) %>%
     left_join(p_mag, by = c("var" = "var_name")) %>%
     knitr::kable(
         digits = c(rep(0, 5), 3),
@@ -463,46 +431,36 @@ df_mag %>%
     ) %>%
     kable_styling() %>%
     add_header_above(
-        header = make_header(data_demographics, 2, ci = FALSE)
+        header = make_header(df_mag, 2, ci = FALSE)
     ) %>%
     add_header_above(hdr_year(2, ci = FALSE))
 
 ```
 
 ```{r}
-df <- data_meds_mag_dosing %>%
+df_mag_dose <- data_meds_mag_dosing %>%
     left_join(
         data_demographics[c(id_col, "year")],
         by = id_col
-    ) 
-
-p_mag <- df %>%
-    do(
-        tidy(
-            wilcox.test(
-                n ~ year, 
-                data = ., 
-                conf.int = TRUE
-            )
-        )
     ) %>%
-    mutate(var_name = "mag_num_doses") %>%
-    select(var_name, p.value, conf.low, conf.high) %>%
-    ungroup()
+    rename(num.doses = n)
 
-df %>%
+p_mag_dose <- df_mag_dose %>%
+    p_cont(num.doses)
+
+df_mag_dose %>%
     group_by(year) %>%
     summarize_at(
-        "n", 
+        "num.doses", 
         funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
         na.rm = TRUE
     ) %>%
-    mutate(var_name = "mag_num_doses") %>%
+    mutate(var_name = "num.doses") %>%
     unite(all_measures, median, q25, q75) %>%
     spread(year, all_measures) %>%
     separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
     separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_mag, by = "var_name") %>%
+    left_join(p_mag_dose, by = "var_name") %>%
     mutate_at(
         c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
         as.numeric
@@ -511,7 +469,7 @@ df %>%
         "var_name", 
         str_replace_all, 
         pattern = c(
-            "mag_num.doses" = "Number of doses"
+            "num.doses" = "Number of doses"
         )
     ) %>%
     knitr::kable(
@@ -521,7 +479,7 @@ df %>%
         col.names = cont_cols
     ) %>%
     kable_styling() %>%
-    add_header_above(header = make_header(df)) %>%
+    add_header_above(make_header(df_mag_dose)) %>%
     add_header_above(hdr_year())
 ```
 
