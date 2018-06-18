@@ -9,3 +9,4 @@ data_shannan
 *.csv
 *.csv.gz
 *.Rds
+*.xlsx
