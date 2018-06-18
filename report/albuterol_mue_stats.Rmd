@@ -15,12 +15,34 @@ options(
 
 ```{r}
 library(tidyverse)
+library(readxl)
 library(broom)
 library(rlang)
 library(kableExtra)
 library(themebg)
 
 x <- dirr::get_rds("../data/tidy/megan")
+x <- "../data/external/manual/manual_data.xlsx"
+
+manual_vent <- x %>%
+    read_excel(sheet = "vent") %>%
+    mutate_at("millennium.id", as.character) 
+
+manual_locations <- x %>%
+    read_excel(sheet = "location") %>%
+    mutate_at("millennium.id", as.character) 
+
+vent_lookup <- manual_vent %>%
+    distinct(event.result, Setting, setting.gen) %>%
+    rename(
+        vent.group = setting.gen,
+        vent.level = Setting
+    )
+
+location_lookup <- manual_locations %>%
+    distinct(location, Status) %>%
+    rename(location.group = Status)
+
 id_col <- "millennium.id"
 
 cont_cols <- c(
@@ -557,4 +579,96 @@ data_meds_steroids_dosing %>%
         caption = cap,
         duration, cum.dose
     )
+```
+
+```{r}
+tmp_vent_escalation <- data_vent %>%
+    filter(!is.na(event.result)) %>%
+    left_join(vent_lookup, by = "event.result") %>%
+    mutate(
+        vent.level = case_when(
+            !is.na(vent.level) ~ vent.level,
+            event == "invasive ventilation mode" ~ 5,
+            event.result == "Ambu Ventilation" ~ 4,
+            event.result == "Blow by" ~ 3,
+            event.result == "SiPaP" ~ 3
+        )
+    ) %>%
+    arrange(millennium.id, event.datetime) %>%
+    group_by(millennium.id) %>%
+    mutate(vent.escalated = lead(vent.level) > vent.level) %>%
+    summarize_at("vent.escalated", sum, na.rm = TRUE) %>%
+    mutate_at("vent.escalated", funs(. > 0))
+
+tmp_location_escalation <- data_locations %>%
+    left_join(location_lookup, by = "location") %>%
+    mutate(
+        location.group = case_when(
+            !is.na(location.group) ~ location.group,
+            location == "HH DSU" ~ "admit"
+        ),
+        location.level = case_when(
+            location.group == "ICU" ~ 4,
+            location.group == "IMU" ~ 3,
+            location.group == "floor" ~ 2,
+            location.group == "ER" ~ 1,
+            location.group == "admit" ~ 1
+                
+        )
+    ) %>%
+    arrange(millennium.id, arrive.datetime) %>%
+    group_by(millennium.id) %>%
+    filter(location.level > 1) %>%
+    mutate(unit.escalated = lead(location.level) > location.level) %>%
+    summarize_at("unit.escalated", sum, na.rm = TRUE) %>%
+    mutate_at("unit.escalated", funs(. > 0))
+
+vars <- c(
+    "unit.escalated" = "Location escalated",
+    "vent.escalated" = "Ventilation escalated"
+)
+
+cap <- "Escalation events"
+
+data_demographics %>%
+    select(millennium.id, year) %>%
+    left_join(tmp_vent_escalation, by = id_col) %>%
+    left_join(tmp_location_escalation, by = id_col) %>%
+    ungroup() %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        vent.escalated, unit.escalated
+    )
+
+```
+
+
+
+```{r, eval=FALSE}
+# mag hypotension
+=IF(AND([@[Age Category]]=1,[@[vital.result]]<60),1,IF(AND([@[Age Category]]=2,[@[vital.result]]<70),1,IF(AND([@[Age Category]]=3,[@[vital.result]]<(70+(2*[@[Age in years]]))),1,IF(AND([@[Age Category]]=4,[@[vital.result]]<90),1,0))))
+
+# age category
+=IF([@[age.days]]<=28,1,IF(AND([@[age.days]]>28,[@[age.days]]<=365),2,IF(AND([@[age.days]]>365,[@[age.days]]<=3649),3,IF([@[age.days]]>3649,4,"N/A"))))
+
+
+# wrong dose
+=IF(AND([@[Weight>40 kg]]=1,[@[med.dose]]<>2000),1,0)
+
+```
+
+```{r}
+tmp <- data_demographics %>%
+    mutate(
+        age.cat = case_when(
+            age.days < 28 ~ 1,
+            age.days <= 365 ~ 2,
+            age.days <= 3649 ~ 3,
+            !is.na(age.days) ~ 4
+        )
+    )
+
+
+
 ```
