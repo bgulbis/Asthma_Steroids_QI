@@ -487,12 +487,23 @@ df_cont_other <- data_demographics %>%
         data_meds_mag_dosing[c(id_col, "n")],
         by = id_col
     ) %>%
-    mutate_at("overlap", as.numeric) %>%
+    left_join(
+        data_med_intermit_start[c(id_col, "time.intermit")],
+        by = id_col
+    ) %>%
+    left_join(
+        data_allergy_first[c(id_col, "allergy.first.days")],
+        by = id_col
+    ) %>%
+    mutate_at(c("overlap", "time.intermit", "allergy.first.days"), as.numeric) %>%
+    mutate_at("allergy.first.days", funs(. * 24)) %>%
     rename(mag.doses = n)
 
 vars <- c(
     "overlap" = "Duration of combined continous albuterol 10 mg/hr and 10 puffs every 2 hr (hours)",
-    "mag.doses" = "Number of magnesium doses"
+    "mag.doses" = "Number of magnesium doses",
+    "time.intermit" = "Time from continuous albuterol to initiation of every 4 hr dosing (hours)",
+    "allergy.first.days" = "Time to first allergy medication (hours)"
 )
 
 cap <- "Other continuous data"
@@ -501,21 +512,49 @@ df_cont_other %>%
     make_cont_table(
         var_name = vars,
         caption = cap,
-        overlap, mag.doses
+        overlap, mag.doses, time.intermit, allergy.first.days
     )
 
 ```
 
-
 ```{r}
-df_allergy <- data_meds_allergy_first %>%
-    full_join(
+vars <- c(
+    "duration" = "Steroid duration",
+    "cum.dose" = "Cumulative dose")
+
+cap <- "Dexamethasone data"
+
+data_meds_steroids_dosing %>%
+    left_join(
         data_demographics[c(id_col, "year")],
         by = id_col
     ) %>%
-    mutate(allergy.med = !is.na(med))
-
-p_allergy <- df_allergy %>%
-    p_cat(allergy.med, med)
+    filter(med == "dexamethasone") %>%
+    select(-n) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        duration, cum.dose
+    )
 ```
 
+```{r}
+vars <- c(
+    "duration" = "Steroid duration",
+    "cum.dose" = "Cumulative dose")
+
+cap <- "Prednisone data"
+
+data_meds_steroids_dosing %>%
+    left_join(
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) %>%
+    filter(med != "dexamethasone") %>%
+    select(-n) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        duration, cum.dose
+    )
+```
