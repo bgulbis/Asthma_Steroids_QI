@@ -367,18 +367,6 @@ data_demographics %>%
 ```
 
 ```{r}
-cap <- "Baseline characteristics (continuous-only patients)"
-
-data_demographics %>%
-    semi_join(data_cont_albuterol_summary, by = id_col) %>%
-    make_cont_table(
-        var_name = vars,
-        caption = cap,
-        age, age.days, length.stay, height, weight
-    )
-```
-
-```{r}
 df_cont_alb <- data_cont_albuterol_summary %>%
     distinct(millennium.id) %>%
     mutate(continuous = TRUE)
@@ -411,6 +399,16 @@ df_mag_bp <- data_meds_mag_bp %>%
     summarize_at("hypotension", sum, na.rm = TRUE) %>%
     mutate_at("hypotension", funs(. > 0))
 
+df_mag_dose <- data_meds_mag_run %>%
+    left_join(
+        data_demographics[c(id_col, "weight")],
+        by = id_col
+    ) %>%
+    mutate(wrong.mag.dose = weight > 40 & med.dose != 2000) %>%
+    group_by(millennium.id) %>%
+    summarize_at("wrong.mag.dose", sum, na.rm = TRUE) %>%
+    mutate_at("wrong.mag.dose", funs(. > 0))
+    
 df_allergy <- data_meds_allergy_first %>%
     mutate(allergy.med = !is.na(med)) %>%
     select(-allergy.first.days)
@@ -420,6 +418,7 @@ df_cat_all <- data_demographics %>%
     left_join(df_cont_alb, by = "millennium.id") %>%
     left_join(df_mag, by = "millennium.id") %>%
     left_join(df_mag_bp, by = "millennium.id") %>%
+    left_join(df_mag_dose, by = "millennium.id") %>%
     left_join(df_allergy, by = "millennium.id") %>%
     mutate_at(
         c("continuous", "magnesium", "allergy.med"), 
@@ -433,7 +432,8 @@ vars <- c(
     "continuous" = "Continuous albuterol used",
     "male" = "Male",
     "allergy.med" = "Allergy medication given",
-    "hypotension" = "Hypotension after magnesium"
+    "hypotension" = "Hypotension after magnesium",
+    "wrong.mag.dose" = "Inappropriate magnesium dose"
 )
 
 cap <- "Categorical data"
@@ -442,7 +442,7 @@ df_cat_all %>%
     make_cat_table(
         var_name = vars,
         caption = cap,
-        male, continuous, magnesium, allergy.med, hypotension
+        male, continuous, magnesium, allergy.med, hypotension, wrong.mag.dose
     )
 ```
 
@@ -669,12 +669,44 @@ data_demographics %>%
 
 ```
 
+## Only patients receiving continuous albuterol
 
+```{r}
+vars <- c(
+    "age" = "Age (years)", 
+    "length.stay" = "Length of stay"
+)
 
-```{r, eval=FALSE}
+cap <- "Baseline characteristics (continuous-only patients)"
 
-# wrong dose
-=IF(AND([@[Weight>40 kg]]=1,[@[med.dose]]<>2000),1,0)
+data_demographics %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        age, length.stay
+    )
+```
+
+```{r}
+vars <- c(
+    "unit.escalated" = "Location escalated",
+    "vent.escalated" = "Ventilation escalated"
+)
+
+cap <- "Escalation events (continuous only)"
+
+data_demographics %>%
+    select(millennium.id, year) %>%
+    left_join(tmp_vent_escalation, by = id_col) %>%
+    left_join(tmp_location_escalation, by = id_col) %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) %>%
+    ungroup() %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        vent.escalated, unit.escalated
+    )
 
 ```
 
