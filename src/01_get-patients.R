@@ -343,7 +343,7 @@ group <- meds_albuterol %>%
     mutate(year = year(med.datetime)) %>%
     distinct(millennium.id, year)
 
-pts_cont <- data_cont_albuterol_summary %>%
+pts_cont <- data_meds_albuterol_cont_dosing %>%
     distinct(millennium.id) %>%
     mutate(continuous = TRUE)
 
