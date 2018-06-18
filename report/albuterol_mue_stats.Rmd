@@ -7,7 +7,10 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-options(knitr.table.format = "html")
+options(
+    knitr.table.format = "html",
+    knitr.kable.NA = ""
+)
 ```
 
 ```{r}
@@ -108,6 +111,92 @@ p_cat <- function(df, ...) {
         )
 }
 
+# might break if only one continuous variable due to var_name becoming NA
+df_cont <- function(df, p, ...) {
+    grp <- quos(...)
+    
+    var_name <- sym("var_name")
+    measure <- sym("measure")
+    result <- sym("result")
+    year <- sym("year")
+    all_measures <- sym("all_measures")
+
+    df %>%
+        group_by(!!year) %>%
+        summarize_at(
+            vars(!!!grp), 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            ), 
+            na.rm = TRUE
+        ) %>%
+        gather(!!var_name, !!result, -!!year) %>%
+        separate(
+            !!var_name, 
+            c("var_name", "measure"), 
+            # c(!!var_name, !!measure), 
+            sep = "_",
+            fill = "left"
+        ) %>%
+        spread(!!measure, !!result) %>%
+        unite(
+            !!all_measures, 
+            !!sym("median"), 
+            !!sym("q25"), 
+            !!sym("q75")
+        ) %>%
+        spread(!!year, !!all_measures) %>%
+        separate(
+            `2016`, 
+            c("median_1", "q25_1", "q75_1"),
+            sep = "_"
+        ) %>%
+        separate(
+            `2017`, 
+            c("median_2", "q25_2", "q75_2"), 
+            sep = "_"
+        ) %>%
+        left_join(p, by = "var_name") %>%
+        mutate_at(
+            c(
+                "median_1", 
+                "q25_1", 
+                "q75_1", 
+                "median_2",
+                "q25_2", 
+                "q75_2"
+            ), 
+            as.numeric
+        )
+    
+}
+
+make_cont_table <- function(df, var_name, caption, ...) {
+    vars <- quos(...)
+    
+    p_df <- df %>%
+        p_cont(...)
+    
+    df %>%
+        df_cont(p = p_df, ...) %>%
+        mutate_at(
+            "var_name", 
+            str_replace_all, 
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(1, 7), rep(3, 3)), 
+            caption = caption,
+            booktabs = TRUE,
+            col.names = cont_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(make_header(df)) %>%
+        add_header_above(hdr_year())    
+}
+
 
 ```
 
@@ -119,58 +208,45 @@ data_demographics %>%
     geom_qq() +
     facet_wrap(~ key, scales = "free") +
     theme_bg()
+
 ```
 
 
 ```{r}
-p_demog <- data_demographics %>%
-    p_cont(age, age.days, length.stay, height, weight)
+vars <- c(
+    "age.days" = "Age (days)",
+    "age" = "Age (years)", 
+    "length.stay" = "Length of stay",
+    "height" = "Height (cm)",
+    "weight" = "Weight (kg)"
+)
+
+cap <- "Baseline characteristics"
 
 data_demographics %>%
-    group_by(year) %>%
-    summarize_at(
-        c("age", "age.days", "length.stay", "height", "weight"), 
-        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
-        na.rm = TRUE
-    ) %>%
-    gather(var_name, result, -year) %>%
-    separate(var_name, c("var_name", "measure"), sep = "_") %>%
-    spread(measure, result) %>%
-    unite(all_measures, median, q25, q75) %>%
-    spread(year, all_measures) %>%
-    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
-    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_demog, by = "var_name") %>%
-    mutate_at(
-        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        "var_name", 
-        str_replace_all, 
-        pattern = c(
-            "age.days" = "Age (days)",
-            "age" = "Age (years)", 
-            "length.stay" = "Length of stay",
-            "height" = "Height (cm)",
-            "weight" = "Weight (kg)"
-        )
-    ) %>%
-    knitr::kable(
-        digits = c(rep(1, 7), rep(3, 3)), 
-        caption = "Baseline characteristics",
-        booktabs = TRUE,
-        col.names = cont_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(make_header(data_demographics)) %>%
-    add_header_above(hdr_year())
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        age, age.days, length.stay, height, weight
+    )
+```
+
+```{r}
+cap <- "Baseline characteristics (continuous-only patients)"
+
+data_demographics %>%
+    filter(continuous) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        age, age.days, length.stay, height, weight
+    )
 ```
 
 ```{r}
 
 p_gender <- data_demographics %>%
-    p_cat(gender, race)
+    p_cat(gender, race, continuous)
 
 df_gender <- data_demographics %>%
     filter(!is.na(gender),
@@ -251,142 +327,74 @@ data_cont_albuterol_summary %>%
 ```
 
 ```{r}
-p_cont_alb <- data_cont_albuterol_summary %>%
-    p_cont(cum.dose, first.rate, max.rate, duration, time.wt.avg)
+vars <- c(
+    "cum.dose" = "Cumulative dose (mg)",
+    "first.rate" = "Initial rate (mg/hr)", 
+    "max.rate" = "Maximum rate (mg/hr)",
+    "duration" = "Duration of infusion until intermittent (hr)",
+    "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
+)
+
+cap <- "Continuous albuterol data (not weight-based)"
 
 data_cont_albuterol_summary %>%
-    group_by(year) %>%
-    summarize_at(
-        c("cum.dose", "first.rate", "max.rate", "duration", "time.wt.avg"), 
-        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
-        na.rm = TRUE
-    ) %>%
-    gather(var_name, result, -year) %>%
-    separate(var_name, c("var_name", "measure"), sep = "_") %>%
-    spread(measure, result) %>%
-    unite(all_measures, median, q25, q75) %>%
-    spread(year, all_measures) %>%
-    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
-    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_cont_alb, by = "var_name") %>%
-    mutate_at(
-        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        "var_name", 
-        str_replace_all, 
-        pattern = c(
-            "cum.dose" = "Cumulative dose (mg)",
-            "first.rate" = "Initial rate (mg/hr)", 
-            "max.rate" = "Maximum rate (mg/hr)",
-            "duration" = "Duration of infusion until intermittent (hr)",
-            "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
-        )
-    ) %>%
-    knitr::kable(
-        digits = c(rep(1, 7), rep(3, 3)), 
-        caption = "Continuous albuterol data (not weight-based)",
-        booktabs = TRUE,
-        col.names = cont_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(header = make_header(data_cont_albuterol_summary)) %>%
-    add_header_above(hdr_year())
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
 ```
 
 ```{r}
-p_cont_alb_wt <- data_cont_albuterol_summary_weight %>%
-    p_cont(cum.dose, first.rate, max.rate, duration, time.wt.avg)
+vars <- c(
+    "cum.dose" = "Cumulative dose (mg)",
+    "first.rate" = "Initial rate (mg/hr)", 
+    "max.rate" = "Maximum rate (mg/hr)",
+    "duration" = "Duration of infusion until intermittent (hr)",
+    "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
+)
+
+cap <- "Continuous albuterol data (weight-based)"
 
 data_cont_albuterol_summary_weight %>%
-    group_by(year) %>%
-    summarize_at(
-        c("cum.dose", "first.rate", "max.rate", "duration", "time.wt.avg"), 
-        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
-        na.rm = TRUE
-    ) %>%
-    gather(var_name, result, -year) %>%
-    separate(var_name, c("var_name", "measure"), sep = "_") %>%
-    spread(measure, result) %>%
-    unite(all_measures, median, q25, q75) %>%
-    spread(year, all_measures) %>%
-    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
-    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_cont_alb_wt, by = "var_name") %>%
-    mutate_at(
-        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        "var_name", 
-        str_replace_all, 
-        pattern = c(
-            "cum.dose" = "Cumulative dose (mg/kg)",
-            "first.rate" = "Initial rate (mg/kg/hr)", 
-            "max.rate" = "Maximum rate (mg/kg/hr)",
-            "duration" = "Duration of infusion until intermittent (hr)",
-            "time.wt.avg" = "Time-weighted average infusion rate (mg/kg/hr)"
-        )
-    ) %>%
-    knitr::kable(
-        digits = c(rep(1, 7), rep(3, 3)), 
-        caption = "Continuous albuterol data (weight-based)",
-        booktabs = TRUE,
-        col.names = cont_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(
-        header = make_header(data_cont_albuterol_summary_weight)
-    ) %>%
-    add_header_above(hdr_year())
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
 ```
+
 
 ```{r}
-df_overlap <- data_med_cont_10q2 %>%
+df_cont_other <- data_demographics %>%
+    select(millennium.id, year) %>%
     left_join(
-        data_demographics[c(id_col, "year")], 
+        data_med_cont_10q2[c(id_col, "overlap")],
         by = id_col
     ) %>%
-    mutate_at("overlap", as.numeric) 
+    left_join(
+        data_meds_mag_dosing[c(id_col, "n")],
+        by = id_col
+    ) %>%
+    mutate_at("overlap", as.numeric) %>%
+    rename(mag.doses = n)
 
-p_cont_overlap <- df_overlap %>%
-    p_cont(overlap)
-    
-df_overlap %>%
-    group_by(year) %>%
-    summarize_at(
-        "overlap", 
-        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
-        na.rm = TRUE
-    ) %>%
-    mutate(var_name = "overlap") %>%
-    unite(all_measures, median, q25, q75) %>%
-    spread(year, all_measures) %>%
-    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
-    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_cont_overlap, by = "var_name") %>%
-    mutate_at(
-        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        "var_name", 
-        str_replace_all, 
-        pattern = c(
-            "overlap" = "Duration of overlap (hr)"
-        )
-    ) %>%
-    knitr::kable(
-        digits = c(rep(1, 7), rep(3, 3)), 
-        caption = "Combined continous albuterol 10 mg/hr and 10 puffs every 2 hr",
-        booktabs = TRUE,
-        col.names = cont_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(header = make_header(df_overlap)) %>%
-    add_header_above(hdr_year())
+vars <- c(
+    "overlap" = "Duration of combined continous albuterol 10 mg/hr and 10 puffs every 2 hr (hours)",
+    "mag.doses" = "Number of magnesium doses"
+)
+
+cap <- "Other continuous data"
+
+df_cont_other %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        overlap, mag.doses
+    )
+
 ```
+
 
 ```{r}
 df_mag <- data_meds_mag_dosing %>%
@@ -438,48 +446,14 @@ df_mag %>%
 ```
 
 ```{r}
-df_mag_dose <- data_meds_mag_dosing %>%
-    left_join(
+df_allergy <- data_meds_allergy_first %>%
+    full_join(
         data_demographics[c(id_col, "year")],
         by = id_col
     ) %>%
-    rename(num.doses = n)
+    mutate(allergy.med = !is.na(med))
 
-p_mag_dose <- df_mag_dose %>%
-    p_cont(num.doses)
-
-df_mag_dose %>%
-    group_by(year) %>%
-    summarize_at(
-        "num.doses", 
-        funs(median, q25 = quantile(., 0.25), q75 = quantile(., 0.75)), 
-        na.rm = TRUE
-    ) %>%
-    mutate(var_name = "num.doses") %>%
-    unite(all_measures, median, q25, q75) %>%
-    spread(year, all_measures) %>%
-    separate(`2016`, c("median_1", "q25_1", "q75_1"), sep = "_") %>%
-    separate(`2017`, c("median_2", "q25_2", "q75_2"), sep = "_") %>%
-    left_join(p_mag_dose, by = "var_name") %>%
-    mutate_at(
-        c("median_1", "q25_1", "q75_1", "median_2", "q25_2", "q75_2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        "var_name", 
-        str_replace_all, 
-        pattern = c(
-            "num.doses" = "Number of doses"
-        )
-    ) %>%
-    knitr::kable(
-        digits = c(rep(1, 7), rep(3, 3)), 
-        caption = "Baseline characteristics",
-        booktabs = TRUE,
-        col.names = cont_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(make_header(df_mag_dose)) %>%
-    add_header_above(hdr_year())
+p_allergy <- df_allergy %>%
+    p_cat(allergy.med, med)
 ```
 
