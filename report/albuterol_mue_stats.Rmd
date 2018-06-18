@@ -173,6 +173,66 @@ df_cont <- function(df, p, ...) {
     
 }
 
+df_cat_logical <- function(df, p, ...) {
+    grp <- quos(...)
+
+    year <- sym("year")
+    n_col <- sym("n")
+    var_name <- sym("var_name")
+    result <- sym("result")
+    result_pct <- sym("result_pct")
+
+    df %>%
+        ungroup() %>%
+        select(!!year, !!!grp) %>%
+        add_count(!!year) %>%
+        group_by(!!year, !!n_col) %>%
+        summarize_if(is.logical, sum, na.rm = TRUE) %>%
+        gather(!!var_name, !!result, -!!year, -!!n_col) %>%
+        mutate(!!"pct" := !!result / !!n_col * 100) %>%
+        select(-!!n_col) %>%
+        unite(!!result_pct, !!result, !!sym("pct")) %>%
+        spread(!!year, !!result_pct) %>%
+        separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+        separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+        mutate_at(
+            c("result1", "pct1", "result2", "pct2"), 
+            as.numeric
+        ) %>%
+        left_join(p, by = "var_name")
+}
+
+df_cat_char <- function(df, ...) {
+    x <- quos(...)
+
+    year <- sym("year")
+    n_col <- sym("n")
+    var_name <- sym("var_name")
+    result <- sym("result")
+    result_pct <- sym("result_pct")
+
+    df %>%
+        ungroup() %>%
+        select(!!sym("millennium.id"), !!year, !!!x) %>%
+        add_count(!!year) %>%
+        mutate(!!"val" := TRUE) %>%
+        spread(!!x[[1]], !!sym("val")) %>%
+        group_by(!!year, !!n_col) %>%
+        summarize_if(is.logical, sum, na.rm = TRUE) %>%
+        gather(!!var_name, !!result, -!!year, -!!n_col) %>%
+        mutate(!!"pct" := !!result / !!n_col * 100) %>%
+        select(-!!n_col) %>%
+        unite(!!result_pct, !!result, !!sym("pct")) %>%
+        spread(!!year, !!result_pct) %>%
+        separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+        separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+        mutate_at(
+            c("result1", "pct1", "result2", "pct2"), 
+            as.numeric
+        ) %>%
+        arrange(desc(!!sym("pct1")))
+}
+
 make_cont_table <- function(df, var_name, caption, ...) {
     vars <- quos(...)
     
@@ -197,6 +257,59 @@ make_cont_table <- function(df, var_name, caption, ...) {
         add_header_above(hdr_year())    
 }
 
+make_cat_table <- function(df, var_name, caption, ...) {
+    vars <- quos(...)
+    
+    p_df <- p_cat(df, ...)
+    
+    df %>%
+        df_cat_logical(p = p_df, ...) %>%
+        mutate_at(
+            "var_name", 
+            str_replace_all, 
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(0, 5), 3),
+            booktabs = TRUE,
+            caption = caption,
+            col.names = cat_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(
+            header = make_header(df, 2, ci = FALSE)
+        ) %>%
+        add_header_above(hdr_year(2, FALSE))
+}
+
+make_cat_char_table <- function(df, var_name, caption, ...) {
+    p_df <- p_cat(df, ...)
+    
+    tbl <- df_cat_char(df, ...)
+
+    p_df %>%
+        bind_rows(tbl) %>%
+        select(-!!sym("p.value"), everything()) %>%
+        ungroup() %>%
+        mutate_at(
+            "var_name",
+            str_replace_all,
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(0, 5), 3),
+            booktabs = TRUE,
+            caption = caption,
+            col.names = cat_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(
+            header = make_header(df_cat_all, 2, ci = FALSE)
+        ) %>%
+        add_header_above(hdr_year(2, FALSE)) %>%
+        group_rows("", 2, nrow(tbl) + 1, label_row_css = "")
+    
+}
 
 ```
 
@@ -244,78 +357,58 @@ data_demographics %>%
 ```
 
 ```{r}
+df_cont_alb <- data_cont_albuterol_summary %>%
+    distinct(millennium.id) %>%
+    mutate(continuous = TRUE)
 
-p_gender <- data_demographics %>%
-    p_cat(gender, race, continuous)
+df_mag <- data_meds_mag_dosing %>%
+    distinct(millennium.id) %>%
+    mutate(magnesium = TRUE)
 
-df_gender <- data_demographics %>%
-    filter(!is.na(gender),
-           gender == "Male") %>%
-    count(year, gender) %>%
-    rename(var_name = gender, 
-           result = n) %>%
-    left_join(
-        count(data_demographics, year), 
-        by = "year"
-    ) %>%
-    mutate(pct = result / n * 100) %>%
-    select(-n) %>%
-    unite(result_pct, result, pct) %>%
-    spread(year, result_pct) %>%
-    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
-    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+df_allergy <- data_meds_allergy_first %>%
+    mutate(allergy.med = !is.na(med)) %>%
+    select(-allergy.first.days)
+
+df_cat_all <- data_demographics %>%
+    select(-continuous) %>%
+    left_join(df_cont_alb, by = "millennium.id") %>%
+    left_join(df_mag, by = "millennium.id") %>%
+    left_join(df_allergy, by = "millennium.id") %>%
     mutate_at(
-        c("result1", "pct1", "result2", "pct2"), 
-        as.numeric
+        c("continuous", "magnesium", "allergy.med"), 
+        funs(coalesce(., FALSE))) %>%
+    mutate_at("race", funs(coalesce(., "Unknown"))
     ) %>%
-    mutate(var = "gender")
+    mutate(male = gender == "Male")
 
-df_race <- data_demographics %>%
-    mutate_at("race", funs(coalesce(., "Unknown"))) %>%
-    filter(!is.na(race)) %>%
-    count(year, race) %>%
-    rename(
-        var_name = race, 
-        result = n
-    ) %>%
-    left_join(
-        count(data_demographics, year), 
-        by = "year"
-    ) %>%
-    mutate(pct = result / n * 100) %>%
-    select(-n) %>%
-    unite(result_pct, result, pct) %>%
-    spread(year, result_pct) %>%
-    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
-    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
-    mutate_at(
-        c("result1", "pct1", "result2", "pct2"), 
-        as.numeric
-    ) %>%
-    mutate_at(
-        c("result1", "pct1", "result2", "pct2"), 
-        funs(coalesce(., 0))
-    ) %>%
-    arrange(desc(pct1)) %>%
-    mutate(var = "race_val")
+vars <- c(
+    "magnesium" = "Magnesium given",
+    "continuous" = "Continuous albuterol used",
+    "male" = "Male",
+    "allergy.med" = "Allergy medication given"
+)
 
-df_gender %>%
-    add_row(var_name = "Race", var = "race") %>%
-    bind_rows(df_race) %>%
-    left_join(p_gender, by = c("var" = "var_name")) %>%
-    select(-var) %>%
-    knitr::kable(
-        digits = c(rep(0, 5), 3),
-        booktabs = TRUE,
-        caption = "Baseline demographics",
-        col.names = cat_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(
-        header = make_header(data_demographics, 2, ci = FALSE)
-    ) %>%
-    add_header_above(hdr_year(2, FALSE)) %>%
-    group_rows("", 3, nrow(df_race) + 2, label_row_css = "")
+cap <- "Categorical data"
+
+df_cat_all %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        male, continuous, magnesium, allergy.med
+    )
+```
+
+```{r}
+vars <- c("race" = "Race")
+
+cap <- "Race"
+
+df_cat_all %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        race
+    )
 
 ```
 
@@ -395,55 +488,6 @@ df_cont_other %>%
 
 ```
 
-
-```{r}
-df_mag <- data_meds_mag_dosing %>%
-    distinct(millennium.id) %>%
-    mutate(mag = TRUE) %>%
-    full_join(
-        data_demographics[c(id_col, "year")], 
-        by = id_col
-    ) %>%
-    mutate_at("mag", funs(coalesce(., FALSE))) 
-
-p_mag <- df_mag %>%
-    rename(Magnesium = mag) %>%
-    p_cat(Magnesium)
-
-df_mag %>%
-    count(year, mag) %>%
-    filter(mag == TRUE) %>%
-    rename(result = n) %>%
-    left_join(
-        count(data_demographics, year), 
-        by = "year"
-    ) %>%
-    mutate(pct = result / n * 100) %>%
-    select(-n, -mag) %>%
-    unite(result_pct, result, pct) %>%
-    spread(year, result_pct) %>%
-    separate(`2016`, c("result1", "pct1"), sep = "_") %>%
-    separate(`2017`, c("result2", "pct2"), sep = "_") %>%
-    mutate_at(
-        c("result1", "pct1", "result2", "pct2"), 
-        as.numeric
-    ) %>%
-    mutate(var = "Magnesium") %>%
-    select(var, everything()) %>%
-    left_join(p_mag, by = c("var" = "var_name")) %>%
-    knitr::kable(
-        digits = c(rep(0, 5), 3),
-        booktabs = TRUE,
-        caption = "Magnesium administration",
-        col.names = cat_cols
-    ) %>%
-    kable_styling() %>%
-    add_header_above(
-        header = make_header(df_mag, 2, ci = FALSE)
-    ) %>%
-    add_header_above(hdr_year(2, ci = FALSE))
-
-```
 
 ```{r}
 df_allergy <- data_meds_allergy_first %>%
