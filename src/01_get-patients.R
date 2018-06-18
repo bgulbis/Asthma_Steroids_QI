@@ -60,6 +60,8 @@ mbo_order <- concat_encounters(meds_albuterol$orig.order.id, 1000)
 
 # step 3 -----------------------------------------------
 # run the following MBO queries using mbo_alb
+#   * Clinical Events - No Order Id - Prompt
+#       - Clinical Event: Oxygen Therapy Mode;Non-Invasive Ventilation Mode;Invasive Ventilation Mode
 #   * Demographics
 #   * Diagnosis Codes (ICD-9/10-CM) - All
 #   * Encounters
@@ -320,7 +322,7 @@ data_locations <- read_data(dir_raw, "locations", FALSE) %>%
 # vent -------------------------------------------------
 
 data_vent <- read_data(dir_raw, "vent", FALSE) %>%
-    as.events() %>%
+    as.events(order_var = FALSE) %>%
     select(millennium.id:event.result, event.location) %>%
     arrange(millennium.id, event.datetime) %>%
     semi_join(pts_all, by = "millennium.id") %>%
@@ -341,13 +343,18 @@ group <- meds_albuterol %>%
     mutate(year = year(med.datetime)) %>%
     distinct(millennium.id, year)
 
+pts_cont <- data_cont_albuterol_summary %>%
+    distinct(millennium.id) %>%
+    mutate(continuous = TRUE)
+
 data_demographics <- pts_all %>%
     semi_join(meds_albuterol, by = "millennium.id") %>%
     left_join(id, by = "millennium.id") %>%
     left_join(group, by = "millennium.id") %>%
-    left_join(pts_asthma, by = "millennium.id") %>%
-    mutate_at("asthma", funs(coalesce(., FALSE))) %>%
     left_join(measures, by = "millennium.id") %>%
+    left_join(pts_asthma, by = "millennium.id") %>%
+    left_join(pts_cont, by = "millennium.id") %>%
+    mutate_at(c("asthma", "continuous"), funs(coalesce(., FALSE))) %>%
     select(-disposition, -visit.type, -facility)
 
 # explore ----------------------------------------------
@@ -384,15 +391,9 @@ med_rate <- meds_albuterol_cont %>%
     ) %>%
     filter(!is.na(rate.text))
 
-rate_20 <- med_rate %>%
+data_alb_rate_20 <- med_rate %>%
     filter(rate.text == 20) %>%
     distinct(millennium.id, med.location)
-
-write.csv(
-    rate_20,
-    "data/external/cont_albuterol_locations.csv",
-    row.names = FALSE
-)
 
 # by each rate / year, mean/median duration at that rate
 
