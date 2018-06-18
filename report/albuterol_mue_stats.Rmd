@@ -304,7 +304,7 @@ make_cat_char_table <- function(df, var_name, caption, ...) {
         ) %>%
         kable_styling() %>%
         add_header_above(
-            header = make_header(df_cat_all, 2, ci = FALSE)
+            header = make_header(df, 2, ci = FALSE)
         ) %>%
         add_header_above(hdr_year(2, FALSE)) %>%
         group_rows("", 2, nrow(tbl) + 1, label_row_css = "")
@@ -348,7 +348,7 @@ data_demographics %>%
 cap <- "Baseline characteristics (continuous-only patients)"
 
 data_demographics %>%
-    filter(continuous) %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) %>%
     make_cont_table(
         var_name = vars,
         caption = cap,
@@ -408,6 +408,24 @@ df_cat_all %>%
         var_name = vars,
         caption = cap,
         race
+    )
+
+```
+
+```{r}
+vars <- c("med" = "Allergy medication")
+
+cap <- "First allergy medication given"
+
+data_meds_allergy_first %>%
+    left_join(
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        med
     )
 
 ```
