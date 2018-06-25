@@ -269,7 +269,7 @@ make_cont_table <- function(df, var_name, caption, ...) {
             pattern = var_name
         ) %>%
         knitr::kable(
-            digits = c(rep(1, 7), rep(3, 3)), 
+            digits = c(rep(2, 7), rep(3, 3)), 
             caption = caption,
             booktabs = TRUE,
             col.names = cont_cols
@@ -328,8 +328,8 @@ make_cat_char_table <- function(df, var_name, caption, ...) {
         add_header_above(
             header = make_header(df, 2, ci = FALSE)
         ) %>%
-        add_header_above(hdr_year(2, FALSE)) %>%
-        group_rows("", 2, nrow(tbl) + 1, label_row_css = "")
+        add_header_above(hdr_year(2, FALSE))
+        # group_rows("", 2, nrow(tbl) + 1, label_row_css = "")
     
 }
 
@@ -525,6 +525,133 @@ data_cont_albuterol_summary_weight %>%
 
 
 ```{r}
+cap <- "Continuous albuterol data (weight-based) for patients 12 and under"
+
+data_cont_albuterol_summary_weight %>%
+    left_join(
+        data_demographics[c("millennium.id", "age")], 
+        by = "millennium.id"
+    ) %>%
+    filter(age <= 12) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
+```
+
+
+```{r}
+df_rate_group <- data_cont_albuterol_summary %>%
+    left_join(
+        data_demographics[c("millennium.id", "age", "weight")], 
+        by = "millennium.id"
+    ) %>%
+    mutate_at("first.rate", as.character) %>%
+    mutate(adolescent = age <= 12) %>%
+    select(millennium.id, adolescent, rate.group = first.rate)
+
+col_nm <- c(
+    "Adolescent", 
+    "Starting Rate",
+    "N",
+    "Median", 
+    "25th", 
+    "75th",
+    "N",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
+
+p_cont_rate <- data_cont_albuterol_summary_weight %>%
+    left_join(df_rate_group, by = "millennium.id") %>%
+    filter(adolescent) %>%
+    group_by(adolescent, rate.group) %>%
+    do(
+        tidy(
+            wilcox.test(
+                first.rate ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(
+        adolescent,
+        rate.group,
+        p.value,
+        conf.low,
+        conf.high
+    ) %>%
+    ungroup()
+
+data_cont_albuterol_summary_weight %>%
+    left_join(df_rate_group, by = "millennium.id") %>%
+    add_count(year, adolescent, rate.group) %>%
+    group_by(year, adolescent, rate.group, n) %>%
+    summarize_at(
+            "first.rate", 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            )
+    ) %>%
+    unite(
+        all_measures, 
+        n,
+        median, 
+        q25, 
+        q75
+    ) %>%
+    spread(year, all_measures) %>%
+    separate(
+        `2016`, 
+        c("n_1", "median_1", "q25_1", "q75_1"),
+        sep = "_"
+    ) %>%
+    separate(
+        `2017`, 
+        c("n_2", "median_2", "q25_2", "q75_2"), 
+        sep = "_"
+    ) %>%
+    left_join(p_cont_rate, by = c("adolescent", "rate.group")) %>%
+    mutate_at(
+        c(
+            "n_1",
+            "median_1", 
+            "q25_1", 
+            "q75_1", 
+            "n_2",
+            "median_2",
+            "q25_2", 
+            "q75_2"
+        ), 
+        as.numeric
+    ) %>%
+    arrange(adolescent, rate.group) %>%
+    # mutate_at(
+    #     "var_name", 
+    #     str_replace_all, 
+    #     pattern = var_name
+    # ) %>%
+    knitr::kable(
+        digits = c(rep(2, 10), rep(3, 3)), 
+        caption = "Comparison of starting rates",
+        booktabs = TRUE,
+        col.names = col_nm
+    ) %>%
+    kable_styling() %>%
+    collapse_rows(columns = 1)
+
+```
+
+
+```{r}
 df_cont_other <- data_demographics %>%
     select(millennium.id, year) %>%
     left_join(
@@ -710,3 +837,39 @@ data_demographics %>%
 
 ```
 
+```{r}
+df_cat_all_cont <- df_cat_all %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) 
+
+vars <- c(
+    "magnesium" = "Magnesium given",
+    "continuous" = "Continuous albuterol used",
+    "male" = "Male",
+    "allergy.med" = "Allergy medication given",
+    "hypotension" = "Hypotension after magnesium",
+    "wrong.mag.dose" = "Inappropriate magnesium dose"
+)
+
+cap <- "Categorical data"
+
+df_cat_all_cont %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        male, magnesium, allergy.med, hypotension, wrong.mag.dose
+    )
+```
+
+```{r}
+vars <- c("race" = "Race")
+
+cap <- "Race"
+
+df_cat_all_cont %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        race
+    )
+
+```
