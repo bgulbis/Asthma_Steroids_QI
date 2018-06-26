@@ -551,16 +551,36 @@ tmp_cont <- data_med_cont_durations %>%
 data_med_cont_10q2 <- intermit %>%
     inner_join(tmp_cont, by = c("millennium.id", "year")) %>%
     mutate_at("duration", as.integer) %>%
-    filter(med.dose == 10,
-           str_detect(
-               freq,
-               regex("q2h", ignore_case = TRUE)
-           ),
-           med.datetime >= rate.start,
-           med.datetime <= rate.start + hours(duration)) %>%
+    filter(
+        med.dose == 10,
+        str_detect(
+            freq,
+            regex("q2h", ignore_case = TRUE)
+        ),
+        med.datetime >= rate.start,
+        med.datetime <= rate.start + hours(duration)
+    ) %>%
     group_by(millennium.id, orig.order.id) %>%
     summarize(
         overlap = difftime(
+            last(med.datetime),
+            first(med.datetime),
+            units = "hours"
+        )
+    )
+
+data_med_cont_to_intermit <- intermit %>%
+    inner_join(tmp_cont, by = c("millennium.id", "year")) %>%
+    mutate_at("duration", as.integer) %>%
+    mutate(freq.q2h = str_detect(freq, regex("q2h", ignore_case = TRUE))) %>%
+    filter(
+        med.datetime >= rate.start + hours(duration),
+        freq.q2h,
+        med.dose == 10 | med.dose == 6
+    ) %>%
+    group_by(millennium.id, orig.order.id, med.dose) %>%
+    summarize(
+        intermit.duration = difftime(
             last(med.datetime),
             first(med.datetime),
             units = "hours"

@@ -554,11 +554,11 @@ df_rate_group <- data_cont_albuterol_summary %>%
 col_nm <- c(
     "Adolescent", 
     "Starting Rate",
-    "N",
+    "n",
     "Median", 
     "25th", 
     "75th",
-    "N",
+    "n",
     "Median", 
     "25th", 
     "75th",
@@ -588,6 +588,22 @@ p_cont_rate <- data_cont_albuterol_summary_weight %>%
         conf.high
     ) %>%
     ungroup()
+
+
+cnt <- count(data_cont_albuterol_summary_weight, year)
+
+x <- paste("n =", cnt$n[[1]])
+y <- paste("n =", cnt$n[[2]])
+z <- "95% CI"
+
+hdr <- c(" " = 2, x = 4, y = 4, " " = 1)
+nm <- c(" ", x, y, " ")
+
+hdr <- c(hdr, z = 2)
+names(hdr) <- c(nm, z)
+    
+x_hdr <- c(" " = 2, "2016" = 4, "2017" = 4, " ")
+x_hdr <- c(x_hdr, " ", " ")
 
 data_cont_albuterol_summary_weight %>%
     left_join(df_rate_group, by = "millennium.id") %>%
@@ -620,8 +636,10 @@ data_cont_albuterol_summary_weight %>%
         sep = "_"
     ) %>%
     left_join(p_cont_rate, by = c("adolescent", "rate.group")) %>%
+    ungroup() %>%
     mutate_at(
         c(
+            "rate.group",
             "n_1",
             "median_1", 
             "q25_1", 
@@ -646,6 +664,8 @@ data_cont_albuterol_summary_weight %>%
         col.names = col_nm
     ) %>%
     kable_styling() %>%
+    add_header_above(hdr) %>%
+    add_header_above(x_hdr) %>%
     collapse_rows(columns = 1)
 
 ```
@@ -873,3 +893,110 @@ df_cat_all_cont %>%
     )
 
 ```
+
+```{r}
+df_cont_intermit <- data_med_cont_to_intermit %>%
+    mutate_at("intermit.duration", as.numeric) %>%
+    filter(intermit.duration > 0) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    ) %>%
+    ungroup()
+
+col_nm <- c(
+    "Puffs",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
+
+p_intermit <- df_cont_intermit %>%
+    group_by(med.dose) %>%
+    do(
+        tidy(
+            wilcox.test(
+                intermit.duration ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(
+        med.dose,
+        p.value,
+        conf.low,
+        conf.high
+    ) %>%
+    ungroup()
+
+df_cont_intermit %>%
+    add_count(year, med.dose) %>%
+    group_by(year, med.dose, n) %>%
+    summarize_at(
+            "intermit.duration", 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            )
+    ) %>%
+    unite(
+        all_measures, 
+        n,
+        median, 
+        q25, 
+        q75
+    ) %>%
+    spread(year, all_measures) %>%
+    separate(
+        `2016`, 
+        c("n_1", "median_1", "q25_1", "q75_1"),
+        sep = "_"
+    ) %>%
+    separate(
+        `2017`, 
+        c("n_2", "median_2", "q25_2", "q75_2"), 
+        sep = "_"
+    ) %>%
+    left_join(p_intermit, by = "med.dose") %>%
+    mutate_at(
+        c(
+            "n_1",
+            "median_1", 
+            "q25_1", 
+            "q75_1", 
+            "n_2",
+            "median_2",
+            "q25_2", 
+            "q75_2"
+        ), 
+        as.numeric
+    ) %>%
+    arrange(med.dose) %>%
+    # mutate_at(
+    #     "var_name", 
+    #     str_replace_all, 
+    #     pattern = var_name
+    # ) %>%
+    knitr::kable(
+        digits = c(rep(2, 10), rep(3, 3)), 
+        caption = "Duration on intermittent dosing (every 2 hours) after continuous albuterol stopped",
+        booktabs = TRUE,
+        col.names = col_nm
+    ) %>%
+    kable_styling() %>%
+    add_header_above(
+        header = make_header(df_cont_intermit, 4)
+    ) %>%
+    add_header_above(hdr_year(4))
+```
+
