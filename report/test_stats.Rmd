@@ -44,7 +44,9 @@ location_lookup <- manual_locations %>%
     rename(location.group = Status)
 
 id_col <- "millennium.id"
+```
 
+```{r}
 cont_cols <- c(
     "Variable", 
     "Median", 
@@ -336,6 +338,15 @@ make_cat_char_table <- function(df, var_name, caption, ...) {
 ```
 
 ```{r}
+x <- data_demographics %>%
+    mutate(adolescent = age <= 12) %>%
+    group_by(adolescent) %>%
+    nest()
+
+```
+
+
+```{r}
 p_cat2 <- function(df, y, ..., subgrp = NULL, exact = FALSE) {
     y_var <- rlang::quo_name(rlang::enexpr(y))
 
@@ -407,6 +418,9 @@ fx <- function(df, y, ..., normal = FALSE) {
     # run_test(formula == !!f, data = df, conf.int = TRUE)
 }
 
+
+
+
 f <- function(df, y, ...) {
 
     x_var <- rlang::quos(...)
@@ -417,7 +431,7 @@ f <- function(df, y, ...) {
         group_by(!!y_var) %>%
         summarize_at(
             vars(!!!x_var), 
-            funs(median, IQR), 
+            funs(mean, sd, median, IQR), 
             na.rm = TRUE
         ) 
     
@@ -425,7 +439,7 @@ f <- function(df, y, ...) {
         df_sum <- df_sum %>%
             gather("var.name", "result", -!!y_var) %>%
             separate("var.name", c("var.name", "measure"), sep = "_") %>%
-            spread("measure", "result") 
+            spread("measure", "result")
     }
 
     df_sum
@@ -452,7 +466,7 @@ m <- map(x$data, fx)
 
 y <- x %>%
     mutate(
-        sum = map(data, f, y = year, age),
+        sum = map(data, f, y = year, age, length.stay),
         # model2 = map(data, test_fx),
         model = map(data, test_fx_mult, x = age, y = year),
         # model2 = map(data, test_fx_mult, x= length.stay, y = year),
@@ -504,6 +518,45 @@ p_cat_test <- function(df, y, ..., subgrp = NULL, exact = FALSE) {
         dplyr::ungroup()
 }
 ```
+
+```{r}
+f3 <- function(x, df, y) {
+    df %>%
+        select(!!x, !!y) %>%
+        group_by(!!y) %>%
+        summarize_at(
+            vars(!!x),
+            funs(mean, sd),
+            na.rm = TRUE
+        ) %>%
+        mutate(!!"var_name" := rlang::quo_name(x))
+}
+
+fx3 <- function(x, df, y) {
+    # x_var <- rlang::quo_name(rlang::enexpr(x))
+    # y_var <- rlang::quo_name(rlang::enexpr(y))
+
+    f <- rlang::parse_expr(paste0(x, " ~ ", y))
+
+    wilcox.test(formula = as.formula(f), data = df, conf.int = TRUE)
+}
+
+f2 <- function(df, y, ...) {
+    x_var <- rlang::quos(...)
+    y_var <- enquo(y)
+    
+    map_df(x_var, f3, df = df, y = y_var)
+}
+
+y <- x %>%
+    mutate(
+        sum = map(data, f2, y = year, age, length.stay)
+    ) %>%
+    unnest(sum)
+
+# y$sum
+```
+
 
 
 ```{r, eval=FALSE}
