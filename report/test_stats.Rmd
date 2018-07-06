@@ -1,0 +1,1173 @@
+---
+title: "Albuterol MUE Statistics"
+author: "Megan Moore, Brian Gulbis"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+options(
+    knitr.table.format = "html",
+    knitr.kable.NA = ""
+)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(broom)
+library(rlang)
+library(kableExtra)
+library(themebg)
+
+x <- dirr::get_rds("../data/tidy/megan")
+x <- "../data/external/manual/manual_data.xlsx"
+
+manual_vent <- x %>%
+    read_excel(sheet = "vent") %>%
+    mutate_at("millennium.id", as.character) 
+
+manual_locations <- x %>%
+    read_excel(sheet = "location") %>%
+    mutate_at("millennium.id", as.character) 
+
+vent_lookup <- manual_vent %>%
+    distinct(event.result, Setting, setting.gen) %>%
+    rename(
+        vent.group = setting.gen,
+        vent.level = Setting
+    )
+
+location_lookup <- manual_locations %>%
+    distinct(location, Status) %>%
+    rename(location.group = Status)
+
+id_col <- "millennium.id"
+
+cont_cols <- c(
+    "Variable", 
+    "Median", 
+    "25th", 
+    "75th",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
+
+cat_cols <- c("Variable", "n", "%", "n", "%", "p-value")
+
+make_header <- function(df, len = 3, ci = TRUE) {
+    cnt <- count(df, year)
+
+    x <- paste("n =", cnt$n[[1]])
+    y <- paste("n =", cnt$n[[2]])
+    z <- "95% CI"
+    
+    hdr <- c(" " = 1, x = len, y = len, " " = 1)
+    nm <- c(" ", x, y, " ")
+    
+    if (ci) {
+        hdr <- c(hdr, z = 2)
+        names(hdr) <- c(nm, z)
+    } else {
+        names(hdr) <- nm
+    }    
+    
+    hdr
+}
+
+hdr_year <- function(len = 3, ci = TRUE) {
+    x <- c(" ", "2016" = len, "2017" = len, " ")
+    if (ci) x <- c(x, " ", " ")
+    
+    x
+}
+
+p_cont <- function(df, ...) {
+    grp <- quos(...)
+    var_name <- sym("var_name")
+    
+    df %>%
+        gather("var_name", "value", !!!grp) %>%
+        group_by(!!var_name) %>%
+        do(
+            tidy(
+                wilcox.test(
+                    value ~ year, 
+                    data = ., 
+                    conf.int = TRUE
+                )
+            )
+        ) %>%
+        select(
+            !!var_name, 
+            !!sym("p.value"), 
+            !!sym("conf.low"),
+            !!sym("conf.high")
+        ) %>%
+        ungroup()
+}
+
+p_cat <- function(df, ...) {
+    grp <- quos(...)
+    var_name <- sym("var_name")
+
+    df %>%
+        select(!!sym("year"), !!!grp) %>%
+        gather("var_name", "value", !!!grp) %>%
+        group_by(!!var_name) %>%
+        do(
+            tidy(
+                chisq.test(
+                    .$year, .$value
+                )
+            )
+        ) %>%
+        select(
+            !!var_name, 
+            !!sym("p.value")
+        )
+}
+
+# might break if only one continuous variable due to var_name becoming NA
+df_cont <- function(df, p, ...) {
+    grp <- quos(...)
+    
+    var_name <- sym("var_name")
+    measure <- sym("measure")
+    result <- sym("result")
+    year <- sym("year")
+    all_measures <- sym("all_measures")
+
+    df %>%
+        group_by(!!year) %>%
+        summarize_at(
+            vars(!!!grp), 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            ), 
+            na.rm = TRUE
+        ) %>%
+        gather(!!var_name, !!result, -!!year) %>%
+        separate(
+            !!var_name, 
+            c("var_name", "measure"), 
+            # c(!!var_name, !!measure), 
+            sep = "_",
+            fill = "left"
+        ) %>%
+        spread(!!measure, !!result) %>%
+        unite(
+            !!all_measures, 
+            !!sym("median"), 
+            !!sym("q25"), 
+            !!sym("q75")
+        ) %>%
+        spread(!!year, !!all_measures) %>%
+        separate(
+            `2016`, 
+            c("median_1", "q25_1", "q75_1"),
+            sep = "_"
+        ) %>%
+        separate(
+            `2017`, 
+            c("median_2", "q25_2", "q75_2"), 
+            sep = "_"
+        ) %>%
+        left_join(p, by = "var_name") %>%
+        mutate_at(
+            c(
+                "median_1", 
+                "q25_1", 
+                "q75_1", 
+                "median_2",
+                "q25_2", 
+                "q75_2"
+            ), 
+            as.numeric
+        )
+    
+}
+
+df_cat_logical <- function(df, p, ...) {
+    grp <- quos(...)
+
+    year <- sym("year")
+    n_col <- sym("n")
+    var_name <- sym("var_name")
+    result <- sym("result")
+    result_pct <- sym("result_pct")
+
+    df %>%
+        ungroup() %>%
+        select(!!year, !!!grp) %>%
+        add_count(!!year) %>%
+        group_by(!!year, !!n_col) %>%
+        summarize_if(is.logical, sum, na.rm = TRUE) %>%
+        gather(!!var_name, !!result, -!!year, -!!n_col) %>%
+        mutate(!!"pct" := !!result / !!n_col * 100) %>%
+        select(-!!n_col) %>%
+        unite(!!result_pct, !!result, !!sym("pct")) %>%
+        spread(!!year, !!result_pct) %>%
+        separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+        separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+        mutate_at(
+            c("result1", "pct1", "result2", "pct2"), 
+            as.numeric
+        ) %>%
+        left_join(p, by = "var_name")
+}
+
+df_cat_char <- function(df, ...) {
+    x <- quos(...)
+
+    year <- sym("year")
+    n_col <- sym("n")
+    var_name <- sym("var_name")
+    result <- sym("result")
+    result_pct <- sym("result_pct")
+
+    df %>%
+        ungroup() %>%
+        select(!!sym("millennium.id"), !!year, !!!x) %>%
+        add_count(!!year) %>%
+        mutate(!!"val" := TRUE) %>%
+        spread(!!x[[1]], !!sym("val")) %>%
+        group_by(!!year, !!n_col) %>%
+        summarize_if(is.logical, sum, na.rm = TRUE) %>%
+        gather(!!var_name, !!result, -!!year, -!!n_col) %>%
+        mutate(!!"pct" := !!result / !!n_col * 100) %>%
+        select(-!!n_col) %>%
+        unite(!!result_pct, !!result, !!sym("pct")) %>%
+        spread(!!year, !!result_pct) %>%
+        separate(`2016`, c("result1", "pct1"), sep = "_") %>%
+        separate(`2017`, c("result2", "pct2"), sep = "_") %>%
+        mutate_at(
+            c("result1", "pct1", "result2", "pct2"), 
+            as.numeric
+        ) %>%
+        arrange(desc(!!sym("pct1")))
+}
+
+make_cont_table <- function(df, var_name, caption, ...) {
+    vars <- quos(...)
+    
+    p_df <- df %>%
+        p_cont(...)
+    
+    df %>%
+        df_cont(p = p_df, ...) %>%
+        mutate_at(
+            "var_name", 
+            str_replace_all, 
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(2, 7), rep(3, 3)), 
+            caption = caption,
+            booktabs = TRUE,
+            col.names = cont_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(make_header(df)) %>%
+        add_header_above(hdr_year())    
+}
+
+make_cat_table <- function(df, var_name, caption, ...) {
+    vars <- quos(...)
+    
+    p_df <- p_cat(df, ...)
+    
+    df %>%
+        df_cat_logical(p = p_df, ...) %>%
+        mutate_at(
+            "var_name", 
+            str_replace_all, 
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(0, 5), 3),
+            booktabs = TRUE,
+            caption = caption,
+            col.names = cat_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(
+            header = make_header(df, 2, ci = FALSE)
+        ) %>%
+        add_header_above(hdr_year(2, FALSE))
+}
+
+make_cat_char_table <- function(df, var_name, caption, ...) {
+    p_df <- p_cat(df, ...)
+    
+    tbl <- df_cat_char(df, ...)
+
+    p_df %>%
+        bind_rows(tbl) %>%
+        select(-!!sym("p.value"), everything()) %>%
+        ungroup() %>%
+        mutate_at(
+            "var_name",
+            str_replace_all,
+            pattern = var_name
+        ) %>%
+        knitr::kable(
+            digits = c(rep(0, 5), 3),
+            booktabs = TRUE,
+            caption = caption,
+            col.names = cat_cols
+        ) %>%
+        kable_styling() %>%
+        add_header_above(
+            header = make_header(df, 2, ci = FALSE)
+        ) %>%
+        add_header_above(hdr_year(2, FALSE))
+        # group_rows("", 2, nrow(tbl) + 1, label_row_css = "")
+    
+}
+
+```
+
+```{r}
+p_cat2 <- function(df, y, ..., subgrp = NULL, exact = FALSE) {
+    y_var <- rlang::quo_name(rlang::enexpr(y))
+
+    x <- rlang::quos(...)
+
+    var_name <- rlang::sym("var_name")
+
+    if (exact) {
+        run_test <- stats::fisher.test
+    } else {
+        run_test <- stats::chisq.test
+    }
+
+    if (!is.null(subgrp)) {
+        var_name <- rlang::quos(!!!rlang::syms(subgrp), !!var_name)
+    }
+    
+    y_val <- dplyr::pull(df, y_var)
+
+    df %>%
+        select(!!!x) %>%
+        map(~ run_test(.x, y_val) %>% broom::tidy())
+}
+
+test_fx <- function(df) {
+    wilcox.test(age ~ year, data = df)
+}
+
+test_fx_mult <- function(df, x, y) {
+    x_var <- rlang::quo_name(rlang::enexpr(x))
+    y_var <- rlang::quo_name(rlang::enexpr(y))
+
+    f <- rlang::parse_expr(paste0(x_var, " ~ ", y_var))
+
+    wilcox.test(formula = as.formula(f), data = df, conf.int = TRUE)
+    # 
+    # x_var <- dplyr::pull(df, !!rlang::enexpr(x))
+    # y_var <- dplyr::pull(df, !!rlang::enexpr(y))
+    # 
+    # wilcox.test(x_var, y_var)
+}
+
+
+fx <- function(df, y, ..., normal = FALSE) {
+    # y_var <- rlang::quo_name(rlang::enexpr(y))
+    y_var <- dplyr::pull(df, !!rlang::enexpr(y))
+    
+    x_var <- rlang::quos(...)
+
+    # f <- rlang::parse_expr(paste0("value ~ ", y_var))
+    # var_name <- rlang::sym("var_name")
+
+    if (normal) {
+        run_test <- stats::t.test
+    } else {
+        run_test <- stats::wilcox.test
+    }
+
+    df %>%
+        select(!!!x_var) %>%
+        map(~ run_test(.x, y = y_var, conf.int = TRUE) %>% broom::tidy()) 
+        # map(run_test, y = y_var, conf.int = TRUE) 
+        # map(broom::tidy) 
+        # flatten_dfr()
+        # unnest(.id = "var_name")
+        # tidyr::gather("var_name", "value", !!!x) %>%
+        # dplyr::group_by(!!!var_name) 
+        # map(run_test, formula = !!f, conf.int = TRUE) 
+    # run_test(formula == !!f, data = df, conf.int = TRUE)
+}
+
+f <- function(df, y, ...) {
+
+    x_var <- rlang::quos(...)
+    y_var <- enquo(y)
+
+    
+    df_sum <- df %>%
+        group_by(!!y_var) %>%
+        summarize_at(
+            vars(!!!x_var), 
+            funs(median, IQR), 
+            na.rm = TRUE
+        ) 
+    
+    if (length(x_var) > 1) {
+        df_sum <- df_sum %>%
+            gather("var.name", "result", -!!y_var) %>%
+            separate("var.name", c("var.name", "measure"), sep = "_") %>%
+            spread("measure", "result") 
+    }
+
+    df_sum
+    # df_sum %>%    
+    #     unite(
+    #         "all.measures",
+    #         "median",
+    #         "IQR"
+    #     ) %>%
+    #     spread(!!y_var, "all.measures", sep = "_")
+    # separate()
+    
+}
+
+x <- data_demographics %>%
+    mutate(adolescent = age <= 12) %>%
+    group_by(adolescent) %>%
+    nest()
+
+y$data[[1]] %>%
+    fx(y = year, age)
+
+m <- map(x$data, fx)
+
+y <- x %>%
+    mutate(
+        sum = map(data, f, y = year, age),
+        # model2 = map(data, test_fx),
+        model = map(data, test_fx_mult, x = age, y = year),
+        # model2 = map(data, test_fx_mult, x= length.stay, y = year),
+        # model = map(data, fx, y = year, age, length.stay),
+        tidy = map(model, broom::tidy)
+        # tidy2 = map(model2, broom::tidy)
+    ) %>%
+    unnest(tidy)
+    # mutate_at(c("model", "model2"), map, .f = broom::tidy)
+    
+    
+y$sum[[1]] %>%
+    separate(2, c("iqr1", "med1"), sep = "_", fill = "left", convert = TRUE) %>%
+    separate(4, c("iqr2", "med2"), sep = "_", fill = "left", convert = TRUE)
+
+y %>%
+    unnest(sum, tidy, .drop = TRUE) 
+
+
+p_cat_test <- function(df, y, ..., subgrp = NULL, exact = FALSE) {
+    y_var <- rlang::quo_name(rlang::enexpr(y))
+
+    x <- rlang::quos(...)
+
+    var_name <- rlang::sym("var_name")
+
+    if (exact) {
+        run_test <- stats::fisher.test
+    } else {
+        run_test <- stats::chisq.test
+    }
+
+    if (!is.null(subgrp)) {
+        var_name <- rlang::quos(!!!rlang::syms(subgrp), !!var_name)
+    }
+
+    df %>%
+        # select(y_var, !!!x) %>%
+        gather("var_name", "value", !!!x) %>%
+        group_by(!!!var_name) %>%
+        do(
+            broom::tidy(
+                run_test(
+                    x = dplyr::pull(., y_var),
+                    y = dplyr::pull(., !!sym("value"))
+                )
+            )
+        ) %>%
+        dplyr::ungroup()
+}
+```
+
+
+```{r, eval=FALSE}
+data_demographics %>%
+    select(age, age.days, length.stay, height, weight) %>%
+    gather(key, value) %>%
+    ggplot(aes(sample = value)) +
+    geom_qq() +
+    facet_wrap(~ key, scales = "free") +
+    theme_bg()
+
+```
+
+
+```{r}
+vars <- c(
+    "age.days" = "Age (days)",
+    "age" = "Age (years)", 
+    "length.stay" = "Length of stay",
+    "height" = "Height (cm)",
+    "weight" = "Weight (kg)"
+)
+
+cap <- "Baseline characteristics"
+
+data_demographics %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        age, age.days, length.stay, height, weight
+    )
+```
+
+```{r}
+df_cont_alb <- data_cont_albuterol_summary %>%
+    distinct(millennium.id) %>%
+    mutate(continuous = TRUE)
+
+df_mag <- data_meds_mag_dosing %>%
+    distinct(millennium.id) %>%
+    mutate(magnesium = TRUE)
+
+df_age_cats <- data_demographics %>%
+    mutate(
+        age.cat = case_when(
+            age.days < 28 ~ 1,
+            age.days <= 365 ~ 2,
+            age.days <= 3649 ~ 3,
+            !is.na(age.days) ~ 4
+        )
+    ) %>%
+    select(millennium.id, age, age.cat)
+
+df_mag_bp <- data_meds_mag_bp %>%
+    left_join(df_age_cats, by = id_col) %>%
+    mutate(
+        hypotension = age.cat == 1 & vital.result < 60 |
+            age.cat == 2 & vital.result < 70 |
+            age.cat == 3 & vital.result < 70 + (2 * age) |
+            age.cat == 4 & vital.result < 90
+    ) %>%
+    select(millennium.id, hypotension) %>%
+    group_by(millennium.id) %>%
+    summarize_at("hypotension", sum, na.rm = TRUE) %>%
+    mutate_at("hypotension", funs(. > 0))
+
+df_mag_dose <- data_meds_mag_run %>%
+    left_join(
+        data_demographics[c(id_col, "weight")],
+        by = id_col
+    ) %>%
+    mutate(wrong.mag.dose = weight > 40 & med.dose != 2000) %>%
+    group_by(millennium.id) %>%
+    summarize_at("wrong.mag.dose", sum, na.rm = TRUE) %>%
+    mutate_at("wrong.mag.dose", funs(. > 0))
+    
+df_allergy <- data_meds_allergy_first %>%
+    mutate(allergy.med = !is.na(med)) %>%
+    select(-allergy.first.days)
+
+df_cat_all <- data_demographics %>%
+    select(-continuous) %>%
+    left_join(df_cont_alb, by = "millennium.id") %>%
+    left_join(df_mag, by = "millennium.id") %>%
+    left_join(df_mag_bp, by = "millennium.id") %>%
+    left_join(df_mag_dose, by = "millennium.id") %>%
+    left_join(df_allergy, by = "millennium.id") %>%
+    mutate_at(
+        c("continuous", "magnesium", "allergy.med"), 
+        funs(coalesce(., FALSE))) %>%
+    mutate_at("race", funs(coalesce(., "Unknown"))
+    ) %>%
+    mutate(male = gender == "Male")
+
+vars <- c(
+    "magnesium" = "Magnesium given",
+    "continuous" = "Continuous albuterol used",
+    "male" = "Male",
+    "allergy.med" = "Allergy medication given",
+    "hypotension" = "Hypotension after magnesium",
+    "wrong.mag.dose" = "Inappropriate magnesium dose"
+)
+
+cap <- "Categorical data"
+
+df_cat_all %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        male, continuous, magnesium, allergy.med, hypotension, wrong.mag.dose
+    )
+```
+
+```{r}
+vars <- c("race" = "Race")
+
+cap <- "Race"
+
+df_cat_all %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        race
+    )
+
+```
+
+```{r}
+vars <- c("med" = "Allergy medication")
+
+cap <- "First allergy medication given"
+
+data_meds_allergy_first %>%
+    left_join(
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        med
+    )
+
+```
+
+```{r, eval=FALSE}
+data_cont_albuterol_summary %>%
+    ggplot(aes(sample = time.wt.avg)) +
+    geom_qq() +
+    theme_bg()
+```
+
+```{r}
+vars <- c(
+    "cum.dose" = "Cumulative dose (mg)",
+    "first.rate" = "Initial rate (mg/hr)", 
+    "max.rate" = "Maximum rate (mg/hr)",
+    "duration" = "Duration of infusion until intermittent (hr)",
+    "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
+)
+
+cap <- "Continuous albuterol data (not weight-based)"
+
+data_cont_albuterol_summary %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
+```
+
+```{r}
+vars <- c(
+    "cum.dose" = "Cumulative dose (mg)",
+    "first.rate" = "Initial rate (mg/hr)", 
+    "max.rate" = "Maximum rate (mg/hr)",
+    "duration" = "Duration of infusion until intermittent (hr)",
+    "time.wt.avg" = "Time-weighted average infusion rate (mg/hr)"
+)
+
+cap <- "Continuous albuterol data (weight-based)"
+
+data_cont_albuterol_summary_weight %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
+```
+
+
+```{r}
+cap <- "Continuous albuterol data (weight-based) for patients 12 and under"
+
+data_cont_albuterol_summary_weight %>%
+    left_join(
+        data_demographics[c("millennium.id", "age")], 
+        by = "millennium.id"
+    ) %>%
+    filter(age <= 12) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        cum.dose, first.rate, max.rate, duration, time.wt.avg
+    )
+```
+
+
+```{r}
+df_rate_group <- data_cont_albuterol_summary %>%
+    left_join(
+        data_demographics[c("millennium.id", "age", "weight")], 
+        by = "millennium.id"
+    ) %>%
+    mutate_at("first.rate", as.character) %>%
+    mutate(adolescent = age <= 12) %>%
+    select(millennium.id, adolescent, rate.group = first.rate)
+
+col_nm <- c(
+    "Adolescent", 
+    "Starting Rate",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
+
+p_cont_rate <- data_cont_albuterol_summary_weight %>%
+    left_join(df_rate_group, by = "millennium.id") %>%
+    filter(adolescent) %>%
+    group_by(adolescent, rate.group) %>%
+    do(
+        tidy(
+            wilcox.test(
+                first.rate ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(
+        adolescent,
+        rate.group,
+        p.value,
+        conf.low,
+        conf.high
+    ) %>%
+    ungroup()
+
+
+cnt <- count(data_cont_albuterol_summary_weight, year)
+
+x <- paste("n =", cnt$n[[1]])
+y <- paste("n =", cnt$n[[2]])
+z <- "95% CI"
+
+hdr <- c(" " = 2, x = 4, y = 4, " " = 1)
+nm <- c(" ", x, y, " ")
+
+hdr <- c(hdr, z = 2)
+names(hdr) <- c(nm, z)
+    
+x_hdr <- c(" " = 2, "2016" = 4, "2017" = 4, " ")
+x_hdr <- c(x_hdr, " ", " ")
+
+data_cont_albuterol_summary_weight %>%
+    left_join(df_rate_group, by = "millennium.id") %>%
+    add_count(year, adolescent, rate.group) %>%
+    group_by(year, adolescent, rate.group, n) %>%
+    summarize_at(
+            "first.rate", 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            )
+    ) %>%
+    unite(
+        all_measures, 
+        n,
+        median, 
+        q25, 
+        q75
+    ) %>%
+    spread(year, all_measures) %>%
+    separate(
+        `2016`, 
+        c("n_1", "median_1", "q25_1", "q75_1"),
+        sep = "_"
+    ) %>%
+    separate(
+        `2017`, 
+        c("n_2", "median_2", "q25_2", "q75_2"), 
+        sep = "_"
+    ) %>%
+    left_join(p_cont_rate, by = c("adolescent", "rate.group")) %>%
+    ungroup() %>%
+    mutate_at(
+        c(
+            "rate.group",
+            "n_1",
+            "median_1", 
+            "q25_1", 
+            "q75_1", 
+            "n_2",
+            "median_2",
+            "q25_2", 
+            "q75_2"
+        ), 
+        as.numeric
+    ) %>%
+    arrange(adolescent, rate.group) %>%
+    # mutate_at(
+    #     "var_name", 
+    #     str_replace_all, 
+    #     pattern = var_name
+    # ) %>%
+    knitr::kable(
+        digits = c(rep(2, 10), rep(3, 3)), 
+        caption = "Comparison of starting rates",
+        booktabs = TRUE,
+        col.names = col_nm
+    ) %>%
+    kable_styling() %>%
+    add_header_above(hdr) %>%
+    add_header_above(x_hdr) %>%
+    collapse_rows(columns = 1)
+
+```
+
+
+```{r}
+df_cont_other <- data_demographics %>%
+    select(millennium.id, year) %>%
+    left_join(
+        data_med_cont_10q2[c(id_col, "overlap")],
+        by = id_col
+    ) %>%
+    left_join(
+        data_meds_mag_dosing[c(id_col, "n")],
+        by = id_col
+    ) %>%
+    left_join(
+        data_med_intermit_start[c(id_col, "time.intermit")],
+        by = id_col
+    ) %>%
+    left_join(
+        data_allergy_first[c(id_col, "allergy.first.days")],
+        by = id_col
+    ) %>%
+    mutate_at(c("overlap", "time.intermit", "allergy.first.days"), as.numeric) %>%
+    mutate_at("allergy.first.days", funs(. * 24)) %>%
+    rename(mag.doses = n)
+
+vars <- c(
+    "overlap" = "Duration of combined continous albuterol 10 mg/hr and 10 puffs every 2 hr (hours)",
+    "mag.doses" = "Number of magnesium doses",
+    "time.intermit" = "Time from continuous albuterol to initiation of every 4 hr dosing (hours)",
+    "allergy.first.days" = "Time to first allergy medication (hours)"
+)
+
+cap <- "Other continuous data"
+
+df_cont_other %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        overlap, mag.doses, time.intermit, allergy.first.days
+    )
+
+```
+
+```{r}
+vars <- c(
+    "duration" = "Steroid duration",
+    "cum.dose" = "Cumulative dose")
+
+cap <- "Dexamethasone data"
+
+data_meds_steroids_dosing %>%
+    left_join(
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) %>%
+    filter(med == "dexamethasone") %>%
+    select(-n) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        duration, cum.dose
+    )
+```
+
+```{r}
+vars <- c(
+    "duration" = "Steroid duration",
+    "cum.dose" = "Cumulative dose")
+
+cap <- "Prednisone data"
+
+data_meds_steroids_dosing %>%
+    left_join(
+        data_demographics[c(id_col, "year")],
+        by = id_col
+    ) %>%
+    filter(med != "dexamethasone") %>%
+    select(-n) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        duration, cum.dose
+    )
+```
+
+```{r}
+tmp_vent_escalation <- data_vent %>%
+    filter(!is.na(event.result)) %>%
+    left_join(vent_lookup, by = "event.result") %>%
+    mutate(
+        vent.level = case_when(
+            !is.na(vent.level) ~ vent.level,
+            event == "invasive ventilation mode" ~ 5,
+            event.result == "Ambu Ventilation" ~ 4,
+            event.result == "Blow by" ~ 3,
+            event.result == "SiPaP" ~ 3
+        )
+    ) %>%
+    arrange(millennium.id, event.datetime) %>%
+    group_by(millennium.id) %>%
+    mutate(vent.escalated = lead(vent.level) > vent.level) %>%
+    summarize_at("vent.escalated", sum, na.rm = TRUE) %>%
+    mutate_at("vent.escalated", funs(. > 0))
+
+tmp_location_escalation <- data_locations %>%
+    left_join(location_lookup, by = "location") %>%
+    mutate(
+        location.group = case_when(
+            !is.na(location.group) ~ location.group,
+            location == "HH DSU" ~ "admit"
+        ),
+        location.level = case_when(
+            location.group == "ICU" ~ 4,
+            location.group == "IMU" ~ 3,
+            location.group == "floor" ~ 2,
+            location.group == "ER" ~ 1,
+            location.group == "admit" ~ 1
+                
+        )
+    ) %>%
+    arrange(millennium.id, arrive.datetime) %>%
+    group_by(millennium.id) %>%
+    filter(location.level > 1) %>%
+    mutate(unit.escalated = lead(location.level) > location.level) %>%
+    summarize_at("unit.escalated", sum, na.rm = TRUE) %>%
+    mutate_at("unit.escalated", funs(. > 0))
+
+vars <- c(
+    "unit.escalated" = "Location escalated",
+    "vent.escalated" = "Ventilation escalated"
+)
+
+cap <- "Escalation events"
+
+data_demographics %>%
+    select(millennium.id, year) %>%
+    left_join(tmp_vent_escalation, by = id_col) %>%
+    left_join(tmp_location_escalation, by = id_col) %>%
+    ungroup() %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        vent.escalated, unit.escalated
+    )
+
+```
+
+## Only patients receiving continuous albuterol
+
+```{r}
+vars <- c(
+    "age" = "Age (years)", 
+    "length.stay" = "Length of stay"
+)
+
+cap <- "Baseline characteristics (continuous-only patients)"
+
+data_demographics %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) %>%
+    make_cont_table(
+        var_name = vars,
+        caption = cap,
+        age, length.stay
+    )
+```
+
+```{r}
+vars <- c(
+    "unit.escalated" = "Location escalated",
+    "vent.escalated" = "Ventilation escalated"
+)
+
+cap <- "Escalation events (continuous only)"
+
+data_demographics %>%
+    select(millennium.id, year) %>%
+    left_join(tmp_vent_escalation, by = id_col) %>%
+    left_join(tmp_location_escalation, by = id_col) %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) %>%
+    ungroup() %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        vent.escalated, unit.escalated
+    )
+
+```
+
+```{r}
+df_cat_all_cont <- df_cat_all %>%
+    semi_join(data_cont_albuterol_summary, by = id_col) 
+
+vars <- c(
+    "magnesium" = "Magnesium given",
+    "continuous" = "Continuous albuterol used",
+    "male" = "Male",
+    "allergy.med" = "Allergy medication given",
+    "hypotension" = "Hypotension after magnesium",
+    "wrong.mag.dose" = "Inappropriate magnesium dose"
+)
+
+cap <- "Categorical data"
+
+df_cat_all_cont %>%
+    make_cat_table(
+        var_name = vars,
+        caption = cap,
+        male, magnesium, allergy.med, hypotension, wrong.mag.dose
+    )
+```
+
+```{r}
+vars <- c("race" = "Race")
+
+cap <- "Race"
+
+df_cat_all_cont %>%
+    make_cat_char_table(
+        var_name = vars,
+        caption = cap,
+        race
+    )
+
+```
+
+```{r}
+df_cont_intermit <- data_med_cont_to_intermit %>%
+    mutate_at("intermit.duration", as.numeric) %>%
+    filter(intermit.duration > 0) %>%
+    left_join(
+        data_demographics[c("millennium.id", "year")],
+        by = "millennium.id"
+    ) %>%
+    ungroup()
+
+col_nm <- c(
+    "Puffs",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "n",
+    "Median", 
+    "25th", 
+    "75th",
+    "p-value", 
+    "low", 
+    "high"
+)
+
+p_intermit <- df_cont_intermit %>%
+    group_by(med.dose) %>%
+    do(
+        tidy(
+            wilcox.test(
+                intermit.duration ~ year, 
+                data = ., 
+                conf.int = TRUE
+            )
+        )
+    ) %>%
+    select(
+        med.dose,
+        p.value,
+        conf.low,
+        conf.high
+    ) %>%
+    ungroup()
+
+df_cont_intermit %>%
+    add_count(year, med.dose) %>%
+    group_by(year, med.dose, n) %>%
+    summarize_at(
+            "intermit.duration", 
+            funs(
+                median, 
+                q25 = quantile(., 0.25), 
+                q75 = quantile(., 0.75)
+            )
+    ) %>%
+    unite(
+        all_measures, 
+        n,
+        median, 
+        q25, 
+        q75
+    ) %>%
+    spread(year, all_measures) %>%
+    separate(
+        `2016`, 
+        c("n_1", "median_1", "q25_1", "q75_1"),
+        sep = "_"
+    ) %>%
+    separate(
+        `2017`, 
+        c("n_2", "median_2", "q25_2", "q75_2"), 
+        sep = "_"
+    ) %>%
+    left_join(p_intermit, by = "med.dose") %>%
+    mutate_at(
+        c(
+            "n_1",
+            "median_1", 
+            "q25_1", 
+            "q75_1", 
+            "n_2",
+            "median_2",
+            "q25_2", 
+            "q75_2"
+        ), 
+        as.numeric
+    ) %>%
+    arrange(med.dose) %>%
+    # mutate_at(
+    #     "var_name", 
+    #     str_replace_all, 
+    #     pattern = var_name
+    # ) %>%
+    knitr::kable(
+        digits = c(rep(2, 10), rep(3, 3)), 
+        caption = "Duration on intermittent dosing (every 2 hours) after continuous albuterol stopped",
+        booktabs = TRUE,
+        col.names = col_nm
+    ) %>%
+    kable_styling() %>%
+    add_header_above(
+        header = make_header(df_cont_intermit, 4)
+    ) %>%
+    add_header_above(hdr_year(4))
+```
+
